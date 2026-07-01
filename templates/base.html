@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>灵兔洞察系统</title>
+  <link href="/static/lib/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css?v=3">
+</head>
+<body>
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <img src="/static/images/logo.png?v=1" alt="灵兔洞察" class="sidebar-logo">
+    </div>
+    
+    <div class="sidebar-menu">
+      {% if current_user.role in ['admin', 'operator'] %}
+      <a href="/" class="menu-item">
+        <span class="menu-icon">🏠</span>
+        <span class="menu-text">首页</span>
+      </a>
+      <a href="/server_inspect" class="menu-item">
+        <span class="menu-icon">🛠️</span>
+        <span class="menu-text">服务器巡检</span>
+      </a>
+      <a href="/inspect" class="menu-item">
+        <span class="menu-icon">🔍</span>
+        <span class="menu-text">巡检项管理</span>
+      </a>
+      <a href="/servers" class="menu-item">
+        <span class="menu-icon">🖥️</span>
+        <span class="menu-text">服务器管理</span>
+      </a>
+      {% endif %}
+      
+      <a href="/reports" class="menu-item">
+        <span class="menu-icon">📊</span>
+        <span class="menu-text">历史报告单</span>
+      </a>
+      
+      {% if current_user.role == 'admin' %}
+      <div class="menu-dropdown">
+        <a href="#" class="menu-item menu-dropdown-toggle" onclick="toggleDropdown(this, event); return false;">
+          <span class="menu-icon">⚙️</span>
+          <span class="menu-text">系统管理项</span>
+          <span class="menu-arrow">▼</span>
+        </a>
+        <div class="menu-dropdown-content">
+          <a href="/users" class="menu-item sub-menu-item">
+            <span class="menu-text">用户管理</span>
+          </a>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    
+    <div class="sidebar-footer">
+      <div class="sidebar-actions">
+        <a href="/profile" class="sidebar-action-btn sidebar-action-exit">退出</a>
+      </div>
+      <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">
+        <span class="toggle-icon">◀</span>
+      </button>
+    </div>
+  </nav>
+  
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  
+  <script src="/static/lib/socket.io.min.js"></script>
+  <script src="/static/lib/axios.min.js"></script>
+  <script src="/static/app.js"></script>
+  <script>
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('collapsed');
+      document.querySelector('main').classList.toggle('sidebar-collapsed');
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+      var dropdown = document.querySelector('.menu-dropdown');
+      if (dropdown && localStorage.getItem('menuExpanded') === 'true') {
+        dropdown.classList.add('expanded');
+      }
+    });
+    
+    function toggleDropdown(button, event) {
+      var dropdown = button.parentElement;
+      var isExpanded = dropdown.classList.contains('expanded');
+      if (!isExpanded) {
+        dropdown.classList.add('expanded');
+        localStorage.setItem('menuExpanded', 'true');
+      } else {
+        dropdown.classList.remove('expanded');
+        localStorage.setItem('menuExpanded', 'false');
+      }
+    }
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

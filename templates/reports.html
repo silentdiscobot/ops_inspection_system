@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">历史报告单</h1>
+  <p class="page-subtitle">查看和下载历史巡检报告</p>
+</div>
+
+<div class="report-section">
+  <h2 class="section-title">📋 报告列表</h2>
+  <div class="report-list" id="report-list">
+    <div class="loading">加载报告列表中...</div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  loadReports();
+});
+
+function loadReports() {
+  axios.get('/api/reports')
+    .then(function(response) {
+      var reports = response.data;
+      var reportList = document.getElementById('report-list');
+      
+      if (reports.length === 0) {
+        reportList.innerHTML = '<div class="empty-state">暂无巡检报告</div>';
+        return;
+      }
+      
+      var html = '<table class="report-table">';
+      html += '<thead><tr><th>报告名称</th><th>格式</th><th>生成时间</th><th>操作</th></tr></thead>';
+      html += '<tbody>';
+      
+      reports.forEach(function(report) {
+        var ext = report.filename.split('.').pop().toUpperCase();
+        var icon = ext === 'PDF' ? '📄' : '📊';
+        html += '<tr>';
+        html += '<td><span class="file-icon">' + icon + '</span><a href="/api/preview_report/' + encodeURIComponent(report.filename) + '" target="_blank" class="report-link">' + report.filename + '</a></td>';
+        html += '<td><span class="format-badge">' + ext + '</span></td>';
+        html += '<td>' + report.mtime + '</td>';
+        html += '<td>';
+        html += '<a href="/download/' + encodeURIComponent(report.filename) + '" class="download-btn">下载</a>';
+        html += '<button class="delete-btn" onclick="deleteReport(\'' + encodeURIComponent(report.filename) + '\')">删除</button>';
+        html += '</td>';
+        html += '</tr>';
+      });
+      
+      html += '</tbody></table>';
+      reportList.innerHTML = html;
+    })
+    .catch(function(error) {
+      console.error('加载报告列表失败:', error);
+      document.getElementById('report-list').innerHTML = '<div class="error-state">加载报告列表失败</div>';
+    });
+}
+
+function deleteReport(filename) {
+  if (!confirm('确定要删除这份报告吗？')) {
+    return;
+  }
+  
+  axios.delete('/api/reports/' + filename)
+    .then(function(response) {
+      alert('删除成功');
+      loadReports();
+    })
+    .catch(function(error) {
+      console.error('删除报告失败:', error);
+      var errorMsg = error.response && error.response.data && error.response.data.message ? error.response.data.message : '未知错误';
+      alert('删除失败: ' + errorMsg);
+    });
+}
+</script>
+{% endblock %}

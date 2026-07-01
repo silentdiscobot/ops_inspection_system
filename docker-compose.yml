@@ -1,0 +1,47 @@
+version: "3.8"
+
+services:
+  ops-inspection:
+    image: ops-inspection-new:v1.0
+    container_name: ops-inspection
+    init: true
+    ports:
+      - "1999:1999"
+
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+
+    environment:
+      TZ: Asia/Shanghai
+      OPS_HOST: 0.0.0.0
+      OPS_PORT: "1999"
+      OPS_DEBUG: "0"
+      # 设为 "1" 前，需要在容器内准备目标服务器的 known_hosts。
+      OPS_SSH_STRICT_HOST_KEY: "0"
+      OPS_QUEUE_WORKERS: "2"
+      OPS_QUEUE_RETRY_DELAY: "10"
+      OPS_CPU_THRESHOLD: "80"
+      OPS_MEM_THRESHOLD: "80"
+      OPS_DISK_THRESHOLD: "80"
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:1999/login', timeout=5)"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    restart: always
+    stop_grace_period: 30s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

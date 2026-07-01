@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+{% block content %}
+<!-- 存储分组数据 -->
+<script type="application/json" id="groupsData">
+[
+  {% for g in groups %}
+    {"id": "{{ g.id }}", "name": "{{ g.name }}"}
+    {% if not loop.last %},{% endif %}
+  {% endfor %}
+]
+</script>
+<div class="page-header">
+  <h1 class="page-title">服务器巡检</h1>
+  <p class="page-subtitle">管理和执行已保存的巡检任务</p>
+</div>
+
+<div class="row">
+  <!-- 任务列表 -->
+  <div class="col-lg-12">
+    <div class="apple-card">
+      <div class="apple-card-header">
+        <h3 class="apple-card-title">巡检任务列表</h3>
+        <a href="/inspect" class="btn btn-primary" style="float: right; margin-top: -32px;">新增任务</a>
+      </div>
+      
+      <div class="form-section">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>任务名称</th>
+              <th>项目名称</th>
+              <th>巡检人</th>
+              <th>定时</th>
+              <th>最新执行时间</th>
+              <th>创建时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="taskTableBody">
+            {% for task in tasks %}
+            <tr>
+              <td><a href="javascript:void(0)" onclick="loadTask({{ task.id }})" style="color: #007AFF; text-decoration: none;">{{ task.name }}</a></td>
+              <td>{{ task.project_name }}</td>
+              <td>{{ task.inspector }}</td>
+              <td>
+                <div class="inspect-switch" onclick="toggleSchedule({{ task.id }})">
+                  <span class="inspect-switch-slider {% if task.enable_schedule %}active{% endif %}"></span>
+                </div>
+              </td>
+              <td>{{ task.last_run or '-' }}</td>
+              <td>{{ task.created_at }}</td>
+              <td>
+                <button class="btn btn-sm btn-primary" onclick="runTask({{ task.id }})">执行</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteTask({{ task.id }})">删除</button>
+              </td>
+            </tr>
+            {% endfor %}
+            {% if not tasks %}
+            <tr>
+              <td colspan="7" style="text-align: center; color: #86868b;">暂无巡检任务，请在"巡检项管理"中创建并保存任务</td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row mt-4">
+  <div class="col-lg-12">
+    <div class="apple-card">
+      <div class="apple-card-header">
+        <h3 class="apple-card-title">最近执行记录</h3>
+      </div>
+      <div class="form-section table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>任务名称</th>
+              <th>来源</th>
+              <th>状态</th>
+              <th>进度</th>
+              <th>尝试次数</th>
+              <th>创建时间</th>
+              <th>完成时间</th>
+              <th>报告</th>
+            </tr>
+          </thead>
+          <tbody id="runHistoryBody">
+            {% for run in runs %}
+            <tr>
+              <td>{{ run.task_name }}</td>
+              <td>
+                {% if run.source == 'scheduled' %}定时
+                {% elif run.source == 'saved' %}手动执行任务
+                {% else %}临时巡检{% endif %}
+              </td>
+              <td>
+                {% if run.status == 'queued' %}<span class="badge bg-secondary">排队中</span>
+                {% elif run.status == 'running' %}<span class="badge bg-primary">执行中</span>
+                {% elif run.status == 'success' %}<span class="badge bg-success">成功</span>
+                {% else %}<span class="badge bg-danger">失败</span>{% endif %}
+              </td>
+              <td>{{ run.progress }}%</td>
+              <td>{{ run.attempts }}/{{ run.max_attempts }}</td>
+              <td>{{ run.created_at }}</td>
+              <td>{{ run.finished_at or '-' }}</td>
+              <td>
+                {% if run.report_filename %}
+                <a href="/download/{{ run.report_filename | urlencode }}">下载</a>
+                {% else %}-{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+            {% if not runs %}
+            <tr><td colspan="8" style="text-align:center;color:#86868b;">暂无执行记录</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 任务编辑区域 -->
+<div id="taskEditSection" style="display: none; margin-top: 20px;">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon">⚙️</div>
+      <h3 class="card-title">编辑巡检任务</h3>
+    </div>
+    
+    <div class="card-body">
+      <div class="inspect-section">
+        <div class="inspect-section-title">
+          <span class="inspect-section-icon">📋</span>
+          基本信息
+        </div>
+        <div class="inspect-section-body">
+          <div class="inspect-form-group">
+            <label class="inspect-form-label">任务名称</label>
+            <input type="text" id="editTaskName" class="inspect-form-control">
+          </div>
+          <div class="inspect-form-group">
+            <label class="inspect-form-label">项目名称</label>
+            <input type="text" id="editProjectName" class="inspect-form-control">
+          </div>
+          <div class="inspect-form-group">
+            <label class="inspect-form-label">巡检人</label>
+            <input type="text" id="editInspector" class="inspect-form-control">
+          </div>
+        </div>
+      </div>
+      
+      <div class="inspect-section">
+        <div class="inspect-section-title">
+          <span class="inspect-section-icon">�</span>
+          报告格式
+        </div>
+        <div class="inspect-section-body">
+          <div class="inspect-form-group">
+            <label class="inspect-form-label">选择输出格式</label>
+            <div class="inspect-format-options">
+              <label class="inspect-format-option">
+                <input type="radio" name="editReportFormat" id="editFormatExcel" value="excel">
+                <span class="inspect-format-content">
+                  <span class="inspect-format-icon">📊</span>
+                  <span class="inspect-format-text">Excel</span>
+                  <span class="inspect-format-check" aria-hidden="true">✓</span>
+                </span>
+              </label>
+              <label class="inspect-format-option">
+                <input type="radio" name="editReportFormat" id="editFormatPdf" value="pdf">
+                <span class="inspect-format-content">
+                  <span class="inspect-format-icon">📄</span>
+                  <span class="inspect-format-text">PDF</span>
+                  <span class="inspect-format-check" aria-hidden="true">✓</span>
+                </span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="inspect-section">
+        <div class="inspect-section-title">
+          <span class="inspect-section-icon">💻</span>
+          资源巡检
+        </div>
+        <div class="inspect-section-body">
+          <div class="inspect-form-group">
+            <label class="inspect-form-label">服务器分组</label>
+            <select id="editResourceGroup" class="inspect-form-select">
+              <option value="">全部服务器</option>
+              {% for g in groups %}
+              <option value="{{ g.id }}">{{ g.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="inspect-form-group">
+            <label class="inspect-form-label">巡检项</label>
+            <div class="inspect-checkbox-group">
+              <label class="inspect-checkbox-item">
+                <input type="checkbox" id="editCheckCpu">
+                <span>CPU</span>
+              </label>
+              <label class="inspect-checkbox-item">
+                <input type="checkbox" id="editCheckMem">
+                <span>内存</span>
+              </label>
+              <label class="inspect-checkbox-item">
+                <input type="checkbox" id="editCheckDisk">
+                <span>磁盘</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="inspect-section">
+        <div class="inspect-section-title">
+          <span class="inspect-section-icon">🔌</span>
+          网关代理检测
+          <label class="inspect-switch">
+            <input type="checkbox" id="editEnableProxy">
+            <span class="inspect-switch-slider"></span>
+          </label>
+        </div>
+        <div id="editProxyConfig" style="display: none;">
+          <button type="button" id="editAddProxyRule" class="inspect-btn inspect-btn-primary" style="padding: 0.375rem 0.875rem; font-size: 0.8125rem; margin-bottom: 0.75rem;">
+            + 添加规则
+          </button>
+          <div id="editProxyRulesList"></div>
+        </div>
+      </div>
+      
+      <div class="inspect-section">
+        <div class="inspect-section-title">
+          <span class="inspect-section-icon">⏰</span>
+          定时巡检
+          <label class="inspect-switch">
+            <input type="checkbox" id="editEnableSchedule">
+            <span class="inspect-switch-slider"></span>
+          </label>
+        </div>
+        <div id="editScheduleConfig" style="display: none;">
+          <div class="inspect-form-group">
+            <label class="inspect-form-label">执行时间</label>
+            <input type="time" id="editScheduleTime" class="inspect-form-control">
+          </div>
+        </div>
+      </div>
+      
+      <div class="inspect-btn-group">
+        <button id="btnSaveEdit" class="inspect-btn inspect-btn-primary">
+          <span class="inspect-btn-icon">💾</span>
+          保存修改
+        </button>
+        <button id="btnCancelEdit" class="inspect-btn inspect-btn-secondary">
+          <span class="inspect-btn-icon">❌</span>
+          取消
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+  
+  <!-- 执行日志 -->
+  <div class="col-lg-12 mt-4">
+    <div class="apple-card">
+      <div class="apple-card-header">
+        <h3 class="apple-card-title">执行日志</h3>
+      </div>
+      
+      <div class="progress-container">
+        <div class="progress-info">
+          <span class="progress-label">当前进度</span>
+          <span id="progressPercent" class="progress-percent">0%</span>
+        </div>
+        <div class="progress">
+          <div id="progressBar" class="progress-bar" style="width: 0%"></div>
+        </div>
+      </div>
+      
+      <div class="form-section">
+        <pre id="logBox" class="log-box"></pre>
+      </div>
+      
+      <div id="downloadBox" class="mt-3"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

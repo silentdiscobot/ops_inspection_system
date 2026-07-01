@@ -1,0 +1,423 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">服务器管理界面</h1>
+  <p class="page-subtitle">管理服务器资产与分组配置</p>
+</div>
+
+<div class="row server-management-row">
+  <!-- 左侧：分组管理 -->
+  <div class="col-lg-3 group-section">
+    <div class="card group-card">
+      <div class="card-header">
+        <div class="card-icon">📁</div>
+        <h3 class="card-title">分组管理</h3>
+      </div>
+      
+      <div class="card-body">
+        <div class="form-group">
+          <label class="form-label">新建分组</label>
+          <div class="input-group">
+            <input type="text" id="groupName" class="form-control" placeholder="分组名称">
+            <button class="btn btn-primary" onclick="addGroup()">添加</button>
+          </div>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div class="form-section-title">已有分组</div>
+        <div class="group-list">
+          {% for g in groups %}
+          <div class="group-item">
+            <span class="group-name">{{g.name}}</span>
+            <button class="btn btn-sm btn-danger" onclick="deleteGroup({{g.id}})">删除</button>
+          </div>
+          {% endfor %}
+          {% if not groups %}
+          <div class="empty-state">暂无分组</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 右侧：服务器管理 -->
+  <div class="col-lg-9 server-section">
+    <!-- 新增服务器卡片 -->
+    <div class="card server-card">
+      <div class="card-header">
+        <div class="card-icon">🖥️</div>
+        <h3 class="card-title">新增服务器</h3>
+      </div>
+      
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">IP地址</label>
+            <input type="text" id="ip" class="form-control" placeholder="192.168.1.100">
+          </div>
+          <div class="form-group">
+            <label class="form-label">端口</label>
+            <input type="text" id="port" class="form-control" value="22" placeholder="22">
+          </div>
+          <div class="form-group">
+            <label class="form-label">用户名</label>
+            <input type="text" id="username" class="form-control" placeholder="root（密钥登录也需要）">
+          </div>
+          <div class="form-group">
+            <label class="form-label">SSH认证方式</label>
+            <select id="authType" class="form-select" onchange="toggleAuthFields()"
+                    title="AUTH MODE｜密码 / SSH 私钥" aria-label="SSH认证方式：密码或SSH私钥">
+              <option value="password">密码登录</option>
+              <option value="key">SSH私钥登录</option>
+            </select>
+          </div>
+          <div class="form-group" id="passwordAuthField">
+            <label class="form-label">密码</label>
+            <input type="password" id="password" class="form-control" placeholder="密码（AES加密）">
+          </div>
+        </div>
+
+        <div id="keyAuthFields" style="display:none;">
+          <div class="form-row">
+            <div class="form-group full-width">
+              <label class="form-label">SSH私钥</label>
+              <textarea id="privateKey" class="form-control ssh-key-input" rows="8" spellcheck="false" autocomplete="off" placeholder="粘贴完整私钥，例如：-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
+              <div class="form-hint">支持 RSA、ECDSA、Ed25519 和 OpenSSH 私钥；内容将使用 AES-GCM 加密保存。</div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group full-width">
+              <label class="form-label">私钥口令（可选）</label>
+              <input type="password" id="keyPassphrase" class="form-control" autocomplete="new-password" placeholder="仅加密私钥需要填写">
+            </div>
+          </div>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group full-width">
+            <label class="form-label">所属分组（可多选）</label>
+            <div class="tags-container" id="groupCheckboxes">
+              {% for g in groups %}
+              <label class="tag-checkbox">
+                <input type="checkbox" name="serverGroups" value="{{g.id}}">
+                <span>{{g.name}}</span>
+              </label>
+              {% endfor %}
+              {% if not groups %}
+              <span class="empty-hint">请先创建分组</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group full-width">
+            <label class="form-label">备注信息</label>
+            <input type="text" id="notes" class="form-control" placeholder="可选备注">
+          </div>
+        </div>
+        
+        <div class="form-row">
+          <button class="btn btn-primary btn-block" onclick="addServer()">
+            添加服务器
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 服务器列表卡片 -->
+    <div class="card list-card">
+      <div class="card-header">
+        <div class="card-icon">📋</div>
+        <h3 class="card-title">服务器列表</h3>
+        <div class="filter-container">
+          <select id="filterGroup" class="form-select" onchange="loadServers()">
+            <option value="">全部分组</option>
+            {% for g in groups %}
+            <option value="{{g.id}}">{{g.name}}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      
+      <div class="card-body">
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>IP地址</th>
+                <th>端口</th>
+                <th>用户名</th>
+                <th>认证方式</th>
+                <th>所属分组</th>
+                <th>备注</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="serverTbody">
+              {% for s in servers %}
+              <tr>
+                <td class="ip-cell">{{s.ip}}</td>
+                <td>{{s.port}}</td>
+                <td>{{s.username}}</td>
+                <td>{% if s.auth_type == 'key' %}SSH密钥{% else %}密码{% endif %}</td>
+                <td class="groups-cell">
+                  {% if s.group_names and s.group_names != '无' %}
+                    {% for group_name in s.group_names.split(', ') %}
+                      <span class="group-tag">{{group_name}}</span>
+                    {% endfor %}
+                  {% else %}
+                    <span class="empty-text">-</span>
+                  {% endif %}
+                </td>
+                <td class="notes-cell">{{s.notes or '-'}}</td>
+                <td>
+                  <button class="btn btn-sm btn-danger" onclick="deleteServer({{s.id}})">删除</button>
+                </td>
+              </tr>
+              {% endfor %}
+              {% if not servers %}
+              <tr>
+                <td colspan="7" class="empty-row">
+                  <span class="empty-icon">📭</span>
+                  <span>暂无服务器</span>
+                </td>
+              </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function addGroup() {
+  var groupName = document.getElementById('groupName').value.trim();
+  if (!groupName) {
+    alert('请输入分组名称');
+    return;
+  }
+  
+  fetch('/api/groups', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': getCookie('csrf_token')
+    },
+    body: JSON.stringify({ name: groupName }),
+    credentials: 'include'
+  })
+  .then(function(response) { return response.json(); })
+  .then(function(data) {
+    if (data.ok) {
+      alert('分组添加成功');
+      document.getElementById('groupName').value = '';
+      location.reload();
+    } else {
+      alert('添加失败: ' + (data.msg || '未知错误'));
+    }
+  })
+  .catch(function(error) {
+    console.error('添加分组失败:', error);
+    alert('添加分组失败，请重试');
+  });
+}
+
+function deleteGroup(groupId) {
+  if (!confirm('确定要删除这个分组吗？')) {
+    return;
+  }
+  
+  fetch('/api/groups?id=' + groupId, {
+    method: 'DELETE',
+    headers: {
+      'X-CSRFToken': getCookie('csrf_token')
+    },
+    credentials: 'include'
+  })
+  .then(function(response) { return response.json(); })
+  .then(function(data) {
+    if (data.ok) {
+      alert('删除成功');
+      location.reload();
+    } else {
+      alert('删除失败: ' + (data.msg || '未知错误'));
+    }
+  })
+  .catch(function(error) {
+    console.error('删除分组失败:', error);
+    alert('删除分组失败，请重试');
+  });
+}
+
+function addServer() {
+  var ip = document.getElementById('ip').value.trim();
+  var port = document.getElementById('port').value.trim();
+  var username = document.getElementById('username').value.trim();
+  var authType = document.getElementById('authType').value;
+  var password = document.getElementById('password').value;
+  var privateKey = document.getElementById('privateKey').value;
+  var keyPassphrase = document.getElementById('keyPassphrase').value;
+  var notes = document.getElementById('notes').value.trim();
+  
+  if (!ip) {
+    alert('请输入IP地址');
+    return;
+  }
+  if (!port) {
+    alert('请输入端口');
+    return;
+  }
+  if (!username) {
+    alert('请输入用户名');
+    return;
+  }
+  if (authType === 'password' && !password) {
+    alert('请输入密码');
+    return;
+  }
+  if (authType === 'key' && !privateKey.trim()) {
+    alert('请输入SSH私钥');
+    return;
+  }
+  
+  var selectedGroups = [];
+  var checkboxes = document.querySelectorAll('input[name="serverGroups"]:checked');
+  for (var i = 0; i < checkboxes.length; i++) {
+    selectedGroups.push(parseInt(checkboxes[i].value));
+  }
+  
+  fetch('/api/servers', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': getCookie('csrf_token')
+    },
+    body: JSON.stringify({
+      ip: ip,
+      port: parseInt(port),
+      username: username,
+      auth_type: authType,
+      password: password,
+      private_key: privateKey,
+      key_passphrase: keyPassphrase,
+      notes: notes,
+      group_ids: selectedGroups
+    }),
+    credentials: 'include'
+  })
+  .then(function(response) { return response.json(); })
+  .then(function(data) {
+    if (data.ok) {
+      alert('服务器添加成功');
+      document.getElementById('ip').value = '';
+      document.getElementById('port').value = '22';
+      document.getElementById('username').value = '';
+      document.getElementById('authType').value = 'password';
+      document.getElementById('password').value = '';
+      document.getElementById('privateKey').value = '';
+      document.getElementById('keyPassphrase').value = '';
+      toggleAuthFields();
+      document.getElementById('notes').value = '';
+      var cbs = document.querySelectorAll('input[name="serverGroups"]');
+      for (var j = 0; j < cbs.length; j++) {
+        cbs[j].checked = false;
+      }
+      location.reload();
+    } else {
+      alert('添加失败: ' + (data.msg || '未知错误'));
+    }
+  })
+  .catch(function(error) {
+    console.error('添加服务器失败:', error);
+    alert('添加服务器失败，请重试');
+  });
+}
+
+function deleteServer(serverId) {
+  if (!confirm('确定要删除这个服务器吗？')) {
+    return;
+  }
+  
+  fetch('/api/servers?id=' + serverId, {
+    method: 'DELETE',
+    headers: {
+      'X-CSRFToken': getCookie('csrf_token')
+    },
+    credentials: 'include'
+  })
+  .then(function(response) { return response.json(); })
+  .then(function(data) {
+    if (data.ok) {
+      alert('删除成功');
+      location.reload();
+    } else {
+      alert('删除失败: ' + (data.msg || '未知错误'));
+    }
+  })
+  .catch(function(error) {
+    console.error('删除服务器失败:', error);
+    alert('删除服务器失败，请重试');
+  });
+}
+
+function loadServers() {
+  var groupId = document.getElementById('filterGroup').value;
+  var url = '/api/servers';
+  if (groupId) {
+    url += '?group_id=' + groupId;
+  }
+  
+  fetch(url, { credentials: 'include' })
+  .then(function(response) { return response.json(); })
+  .then(function(data) {
+    var tbody = document.getElementById('serverTbody');
+    tbody.innerHTML = '';
+    
+    if (data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-row"><span class="empty-icon">📭</span><span>暂无服务器</span></td></tr>';
+      return;
+    }
+    
+    for (var i = 0; i < data.length; i++) {
+      var server = data[i];
+      var groupTags = server.group_names && server.group_names !== '无' 
+        ? server.group_names.split(', ').map(function(name) { return '<span class="group-tag">' + name + '</span>'; }).join('')
+        : '<span class="empty-text">-</span>';
+      
+      tbody.innerHTML += '<tr>' +
+        '<td class="ip-cell">' + server.ip + '</td>' +
+        '<td>' + server.port + '</td>' +
+        '<td>' + server.username + '</td>' +
+        '<td>' + (server.auth_type === 'key' ? 'SSH密钥' : '密码') + '</td>' +
+        '<td class="groups-cell">' + groupTags + '</td>' +
+        '<td class="notes-cell">' + (server.notes || '-') + '</td>' +
+        '<td>' +
+        '<button class="btn btn-sm btn-danger" onclick="deleteServer(' + server.id + ')">删除</button>' +
+        '</td>' +
+        '</tr>';
+    }
+  })
+  .catch(function(error) {
+    console.error('加载服务器列表失败:', error);
+  });
+}
+
+function toggleAuthFields() {
+  var isKey = document.getElementById('authType').value === 'key';
+  document.getElementById('passwordAuthField').style.display = isKey ? 'none' : '';
+  document.getElementById('keyAuthFields').style.display = isKey ? 'block' : 'none';
+}
+
+function getCookie(name) {
+  var value = '; ' + document.cookie;
+  var parts = value.split('; ' + name + '=');
+  if (parts.length === 2) return parts.pop().split(';').shift();
+}
+</script>
+{% endblock %}
