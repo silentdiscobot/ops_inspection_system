@@ -2230,6 +2230,43 @@ main {
   display: none;
 }
 
+.server-edit-modal {
+  width: min(760px, calc(100vw - 32px));
+  max-width: 760px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  background: linear-gradient(145deg, rgba(255,255,255,.94), rgba(222,242,255,.9));
+  box-shadow: 0 24px 70px rgba(32, 93, 137, .24);
+}
+
+.server-edit-modal .modal-body { padding: 20px 24px; }
+.server-edit-modal .modal-footer { justify-content: flex-end; }
+.server-edit-modal .modal-footer .btn { flex: 0 0 auto; min-width: 110px; }
+.server-edit-modal .modal-footer-spacer { flex: 1; }
+
+.server-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.server-form-actions .btn {
+  flex: 1;
+  min-height: 44px;
+}
+
+.server-section .data-table th:nth-child(n+2),
+.server-section .data-table td:nth-child(n+2) {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.server-section .data-table td:last-child { white-space: nowrap; }
+
+@media (max-width: 640px) {
+  .server-form-actions { gap: 10px; }
+}
+
 /* ========================================
    Lingtu light glass theme overrides
    ======================================== */

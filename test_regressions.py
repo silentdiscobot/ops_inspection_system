@@ -219,6 +219,74 @@ class SecurityTests(unittest.TestCase):
         self.assertTrue(kwargs["enc_private_key"])
         self.assertIsNone(kwargs["enc_key_passphrase"])
 
+    @patch("app.connect_ssh")
+    @patch("app.create_ssh_client")
+    def test_server_connection_uses_current_form_credentials(self, create_client, connect_ssh):
+        ssh = Mock()
+        create_client.return_value = ssh
+        response = self.client.post(
+            "/api/servers/test-connection",
+            headers={"X-CSRFToken": "test-csrf-token"},
+            json={
+                "ip": "server.example", "port": 2222, "username": "root",
+                "auth_type": "password", "password": "secret",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        connect_ssh.assert_called_once_with(
+            ssh, "server.example", 2222, "root", password="secret",
+            private_key=None, key_passphrase=None, timeout=10,
+        )
+        ssh.close.assert_called_once()
+
+    @patch("app.aes_gcm_decrypt", return_value="saved-secret")
+    @patch("app.get_server")
+    @patch("app.connect_ssh")
+    @patch("app.create_ssh_client")
+    def test_edit_connection_uses_saved_password_when_blank(
+        self, create_client, connect_ssh, get_server, decrypt
+    ):
+        ssh = Mock()
+        create_client.return_value = ssh
+        get_server.return_value = {
+            "id": 9, "auth_type": "password", "enc_password": "encrypted-old",
+            "enc_private_key": None, "enc_key_passphrase": None,
+        }
+        response = self.client.post(
+            "/api/servers/test-connection",
+            headers={"X-CSRFToken": "test-csrf-token"},
+            json={
+                "id": 9, "ip": "edited.example", "port": 22, "username": "ops",
+                "auth_type": "password", "password": "",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        connect_ssh.assert_called_once_with(
+            ssh, "edited.example", 22, "ops", password="saved-secret",
+            private_key=None, key_passphrase=None, timeout=10,
+        )
+
+    @patch("app.update_server")
+    @patch("app.get_server")
+    def test_server_edit_keeps_password_when_left_blank(self, get_server, update_server):
+        get_server.return_value = {
+            "id": 9, "auth_type": "password", "enc_password": "encrypted-old",
+            "enc_private_key": None, "enc_key_passphrase": None,
+        }
+        response = self.client.put(
+            "/api/servers",
+            headers={"X-CSRFToken": "test-csrf-token"},
+            json={
+                "id": 9, "ip": "new.example", "port": 22, "username": "ops",
+                "auth_type": "password", "password": "", "notes": "updated",
+                "group_ids": [1, 2],
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        args = update_server.call_args.args
+        self.assertEqual(args[0:5], (9, "new.example", 22, "ops", "encrypted-old"))
+        self.assertEqual(args[5], [1, 2])
+
     def test_mutation_without_csrf_is_rejected(self):
         response = self.client.post("/api/toggle_schedule", json={"id": 1})
         self.assertEqual(response.status_code, 403)

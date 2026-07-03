@@ -6,9 +6,9 @@ from flask import Flask, render_template, request, jsonify, send_file, session, 
 from flask_socketio import SocketIO
 from werkzeug.security import check_password_hash, generate_password_hash
 from config import HOST, PORT, DEBUG, SECRET_KEY, CPU_THRESHOLD, MEM_THRESHOLD, DISK_THRESHOLD, load_aes_key, DEFAULT_ADMIN_PASSWORD, REPORT_DIR, security_config_warnings, QUEUE_WORKERS, QUEUE_RETRY_DELAY
-from models import init_db, list_groups, add_group, delete_group, list_servers, add_server, delete_server, add_inspection_task, list_inspection_tasks, get_inspection_task, update_inspection_task, delete_inspection_task, toggle_task_schedule, update_task_last_run, migrate_inspection_tasks_schema, add_user, get_user, list_users, delete_user, update_user, create_inspection_run, claim_next_inspection_run, recover_interrupted_inspection_runs, update_inspection_run_progress, finish_inspection_run, retry_or_fail_inspection_run, get_inspection_run, list_inspection_runs, clear_inspection_results, add_inspection_result
+from models import init_db, list_groups, add_group, delete_group, list_servers, add_server, get_server, update_server, delete_server, add_inspection_task, list_inspection_tasks, get_inspection_task, update_inspection_task, delete_inspection_task, toggle_task_schedule, update_task_last_run, migrate_inspection_tasks_schema, add_user, get_user, list_users, delete_user, update_user, create_inspection_run, claim_next_inspection_run, recover_interrupted_inspection_runs, update_inspection_run_progress, finish_inspection_run, retry_or_fail_inspection_run, get_inspection_run, list_inspection_runs, clear_inspection_results, add_inspection_result
 from crypto_utils import aes_gcm_encrypt, aes_gcm_decrypt
-from inspection import inspect_server, parse_private_key, test_proxy
+from inspection import inspect_server, parse_private_key, test_proxy, create_ssh_client, connect_ssh
 from report_excel import generate_excel_report
 from captcha_utils import generate_captcha, generate_captcha_image
 
@@ -539,7 +539,94 @@ def api_groups():
         delete_group(gid)
         return jsonify({"ok": True})
 
-@app.route("/api/servers", methods=["GET", "POST", "DELETE"])
+def validate_server_payload(data, require_credentials=True):
+    ip = str(data.get("ip", "")).strip()
+    try:
+        port = int(data.get("port", 22))
+    except (TypeError, ValueError):
+        raise ValueError("端口格式无效")
+    username = str(data.get("username", "")).strip()
+    auth_type = data.get("auth_type", "password")
+    password = data.get("password", "") or ""
+    private_key = data.get("private_key", "") or ""
+    key_passphrase = data.get("key_passphrase", "") or ""
+    notes = str(data.get("notes", ""))
+    group_ids = data.get("group_ids", []) or []
+    if not is_valid_host(ip):
+        raise ValueError("IP地址或主机名格式无效")
+    if not 1 <= port <= 65535:
+        raise ValueError("端口必须在1到65535之间")
+    if not re.fullmatch(r'[A-Za-z0-9_.-]{1,64}', username):
+        raise ValueError("用户名格式无效")
+    if auth_type not in ("password", "key"):
+        raise ValueError("SSH认证方式无效")
+    if len(password) > 1024 or len(key_passphrase) > 1024 or len(private_key) > 65536:
+        raise ValueError("认证信息过长")
+    if require_credentials and auth_type == "password" and not password:
+        raise ValueError("密码不能为空")
+    if require_credentials and auth_type == "key" and not private_key:
+        raise ValueError("SSH私钥不能为空")
+    if private_key:
+        parse_private_key(private_key, key_passphrase or None)
+    if not is_safe_display_text(notes, 500):
+        raise ValueError("备注包含非法字符")
+    try:
+        group_ids = [int(group_id) for group_id in group_ids]
+    except (TypeError, ValueError):
+        raise ValueError("服务器分组格式无效")
+    return {
+        "ip": ip, "port": port, "username": username, "auth_type": auth_type,
+        "password": password, "private_key": private_key,
+        "key_passphrase": key_passphrase, "notes": notes, "group_ids": group_ids,
+    }
+
+@app.route("/api/servers/test-connection", methods=["POST"])
+@login_required
+@role_required(['admin', 'operator'])
+def api_test_server_connection():
+    try:
+        data = request.json or {}
+        server_id = data.get("id")
+        existing = None
+        if server_id not in (None, ""):
+            try:
+                existing = get_server(int(server_id))
+            except (TypeError, ValueError):
+                raise ValueError("服务器ID无效")
+            if not existing:
+                raise ValueError("服务器不存在")
+        values = validate_server_payload(data, require_credentials=not bool(existing))
+        auth_changed = bool(existing) and values["auth_type"] != existing.get("auth_type", "password")
+        if auth_changed and not (values["password"] or values["private_key"]):
+            raise ValueError("切换认证方式时必须填写新的认证凭据")
+        if existing and values["auth_type"] == "password" and not values["password"]:
+            values["password"] = aes_gcm_decrypt(load_aes_key(), existing["enc_password"])
+        if existing and values["auth_type"] == "key" and not values["private_key"]:
+            key = load_aes_key()
+            values["private_key"] = aes_gcm_decrypt(key, existing["enc_private_key"])
+            values["key_passphrase"] = (
+                aes_gcm_decrypt(key, existing["enc_key_passphrase"])
+                if existing.get("enc_key_passphrase") else ""
+            )
+        ssh = create_ssh_client()
+        try:
+            connect_ssh(
+                ssh, values["ip"], values["port"], values["username"],
+                password=values["password"] if values["auth_type"] == "password" else None,
+                private_key=values["private_key"] if values["auth_type"] == "key" else None,
+                key_passphrase=values["key_passphrase"] or None,
+                timeout=10,
+            )
+        finally:
+            ssh.close()
+        return jsonify({"ok": True, "msg": "SSH连接测试成功"})
+    except ValueError as exc:
+        return jsonify({"ok": False, "msg": str(exc)}), 400
+    except Exception as exc:
+        logger.warning("服务器连接测试失败 %s: %s", (request.json or {}).get("ip", ""), exc)
+        return jsonify({"ok": False, "msg": "SSH连接失败: " + str(exc)[:240]}), 400
+
+@app.route("/api/servers", methods=["GET", "POST", "PUT", "DELETE"])
 @login_required
 @role_required(['admin', 'operator'])
 def api_servers():
@@ -553,52 +640,57 @@ def api_servers():
             server.pop('enc_key_passphrase', None)
         return jsonify(servers)
     elif request.method == "POST":
-        data = request.json or {}
-        ip = data.get("ip", "").strip()
         try:
-            port = int(data.get("port", 22))
-        except (TypeError, ValueError):
-            return jsonify({"ok": False, "msg": "端口格式无效"}), 400
-        username = data.get("username", "").strip()
-        auth_type = data.get("auth_type", "password")
-        password = data.get("password", "")
-        private_key = data.get("private_key", "")
-        key_passphrase = data.get("key_passphrase", "")
-        group_ids = data.get("group_ids", [])  # 支持多分组
-        notes = data.get("notes","")
-        if not is_valid_host(ip):
-            return jsonify({"ok": False, "msg": "IP地址或主机名格式无效"}), 400
-        if not 1 <= port <= 65535:
-            return jsonify({"ok": False, "msg": "端口必须在1到65535之间"}), 400
-        if not re.fullmatch(r'[A-Za-z0-9_.-]{1,64}', username):
-            return jsonify({"ok": False, "msg": "用户名格式无效"}), 400
-        if auth_type not in ("password", "key"):
-            return jsonify({"ok": False, "msg": "SSH认证方式无效"}), 400
-        if auth_type == "password":
-            if not password or len(password) > 1024:
-                return jsonify({"ok": False, "msg": "密码不能为空或过长"}), 400
-        else:
-            if not private_key or len(private_key) > 65536:
-                return jsonify({"ok": False, "msg": "SSH私钥不能为空或过长"}), 400
-            if len(key_passphrase) > 1024:
-                return jsonify({"ok": False, "msg": "私钥口令过长"}), 400
-            try:
-                parse_private_key(private_key, key_passphrase or None)
-            except ValueError as exc:
-                return jsonify({"ok": False, "msg": str(exc)}), 400
-        if not is_safe_display_text(notes, 500):
-            return jsonify({"ok": False, "msg": "备注包含非法字符"}), 400
+            values = validate_server_payload(request.json or {}, require_credentials=True)
+        except ValueError as exc:
+            return jsonify({"ok": False, "msg": str(exc)}), 400
         key = load_aes_key()
-        enc_password = aes_gcm_encrypt(key, password) if auth_type == "password" else ""
-        enc_private_key = aes_gcm_encrypt(key, private_key) if auth_type == "key" else None
+        enc_password = aes_gcm_encrypt(key, values["password"]) if values["auth_type"] == "password" else ""
+        enc_private_key = aes_gcm_encrypt(key, values["private_key"]) if values["auth_type"] == "key" else None
         enc_key_passphrase = (
-            aes_gcm_encrypt(key, key_passphrase)
-            if auth_type == "key" and key_passphrase else None
+            aes_gcm_encrypt(key, values["key_passphrase"])
+            if values["auth_type"] == "key" and values["key_passphrase"] else None
         )
         add_server(
-            ip, port, username, enc_password, group_ids, notes,
-            auth_type=auth_type, enc_private_key=enc_private_key,
+            values["ip"], values["port"], values["username"], enc_password,
+            values["group_ids"], values["notes"], auth_type=values["auth_type"], enc_private_key=enc_private_key,
             enc_key_passphrase=enc_key_passphrase,
+        )
+        return jsonify({"ok": True})
+    elif request.method == "PUT":
+        data = request.json or {}
+        try:
+            server_id = int(data.get("id"))
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "msg": "服务器ID无效"}), 400
+        existing = get_server(server_id)
+        if not existing:
+            return jsonify({"ok": False, "msg": "服务器不存在"}), 404
+        try:
+            values = validate_server_payload(data, require_credentials=False)
+        except ValueError as exc:
+            return jsonify({"ok": False, "msg": str(exc)}), 400
+        auth_changed = values["auth_type"] != existing.get("auth_type", "password")
+        supplied = values["password"] if values["auth_type"] == "password" else values["private_key"]
+        if auth_changed and not supplied:
+            return jsonify({"ok": False, "msg": "切换认证方式时必须填写新的认证凭据"}), 400
+        key = load_aes_key()
+        if values["auth_type"] == "password":
+            enc_password = aes_gcm_encrypt(key, values["password"]) if values["password"] else existing["enc_password"]
+            enc_private_key = None
+            enc_key_passphrase = None
+        else:
+            enc_password = ""
+            enc_private_key = aes_gcm_encrypt(key, values["private_key"]) if values["private_key"] else existing["enc_private_key"]
+            enc_key_passphrase = (
+                aes_gcm_encrypt(key, values["key_passphrase"])
+                if values["private_key"] and values["key_passphrase"] else
+                (None if values["private_key"] else existing["enc_key_passphrase"])
+            )
+        update_server(
+            server_id, values["ip"], values["port"], values["username"], enc_password,
+            values["group_ids"], values["notes"], values["auth_type"],
+            enc_private_key, enc_key_passphrase,
         )
         return jsonify({"ok": True})
     elif request.method == "DELETE":

@@ -219,6 +219,45 @@ def add_server(ip: str, port: int, username: str, enc_password: str,
     conn.commit()
     conn.close()
 
+def get_server(server_id: int):
+    conn = get_conn()
+    conn.row_factory = row_to_dict
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM servers WHERE id=?", (server_id,))
+    server = cur.fetchone()
+    if server:
+        cur.execute("SELECT group_id FROM server_group_memberships WHERE server_id=?", (server_id,))
+        server['group_ids'] = [row['group_id'] for row in cur.fetchall()]
+    conn.close()
+    return server
+
+def update_server(server_id: int, ip: str, port: int, username: str,
+                  enc_password: str, group_ids: Optional[List[int]] = None,
+                  notes: str = "", auth_type: str = "password",
+                  enc_private_key: str = None, enc_key_passphrase: str = None):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE servers SET ip=?, port=?, username=?, enc_password=?, auth_type=?,
+                           enc_private_key=?, enc_key_passphrase=?, notes=?
+        WHERE id=?
+    """, (
+        ip, port, username, enc_password, auth_type,
+        enc_private_key, enc_key_passphrase, notes, server_id
+    ))
+    if cur.rowcount == 0:
+        conn.close()
+        return False
+    cur.execute("DELETE FROM server_group_memberships WHERE server_id=?", (server_id,))
+    for group_id in group_ids or []:
+        cur.execute("""
+            INSERT OR IGNORE INTO server_group_memberships(server_id, group_id)
+            VALUES (?, ?)
+        """, (server_id, group_id))
+    conn.commit()
+    conn.close()
+    return True
+
 def delete_server(server_id: int):
     conn = get_conn()
     cur = conn.cursor()

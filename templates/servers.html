@@ -118,8 +118,9 @@
           </div>
         </div>
         
-        <div class="form-row">
-          <button class="btn btn-primary btn-block" onclick="addServer()">
+        <div class="form-row server-form-actions">
+          <button type="button" id="testServerBtn" class="btn btn-secondary" onclick="testServerConnection()">测试连接</button>
+          <button type="button" class="btn btn-primary" onclick="addServer()">
             添加服务器
           </button>
         </div>
@@ -173,6 +174,7 @@
                 </td>
                 <td class="notes-cell">{{s.notes or '-'}}</td>
                 <td>
+                  <button class="btn btn-sm btn-primary" onclick="openEditServer({{s.id}})">编辑</button>
                   <button class="btn btn-sm btn-danger" onclick="deleteServer({{s.id}})">删除</button>
                 </td>
               </tr>
@@ -190,6 +192,29 @@
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<div id="editServerOverlay" class="modal-overlay" style="display:none;">
+  <div class="modal-content server-edit-modal">
+    <div class="modal-header"><h3>编辑服务器</h3><button type="button" class="modal-close" onclick="closeEditServer()">×</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="editServerId">
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label">IP地址</label><input id="editIp" class="form-control"></div>
+        <div class="form-group"><label class="form-label">端口</label><input id="editPort" class="form-control"></div>
+        <div class="form-group"><label class="form-label">用户名</label><input id="editUsername" class="form-control"></div>
+        <div class="form-group"><label class="form-label">SSH认证方式</label><select id="editAuthType" class="form-select" onchange="toggleEditAuthFields()"><option value="password">密码登录</option><option value="key">SSH私钥登录</option></select></div>
+        <div class="form-group" id="editPasswordAuthField"><label class="form-label">新密码（留空保持原值）</label><input type="password" id="editPassword" class="form-control" autocomplete="new-password"></div>
+      </div>
+      <div id="editKeyAuthFields" style="display:none;">
+        <div class="form-group"><label class="form-label">新SSH私钥（留空保持原值）</label><textarea id="editPrivateKey" class="form-control ssh-key-input" rows="6"></textarea></div>
+        <div class="form-group"><label class="form-label">新私钥口令（可选）</label><input type="password" id="editKeyPassphrase" class="form-control"></div>
+      </div>
+      <div class="form-group"><label class="form-label">所属分组</label><div class="tags-container">{% for g in groups %}<label class="tag-checkbox"><input type="checkbox" name="editServerGroups" value="{{g.id}}"><span>{{g.name}}</span></label>{% endfor %}</div></div>
+      <div class="form-group"><label class="form-label">备注信息</label><input id="editNotes" class="form-control"></div>
+    </div>
+    <div class="modal-footer"><button type="button" id="editTestServerBtn" class="btn btn-secondary" onclick="testEditServerConnection()">测试连接</button><span class="modal-footer-spacer"></span><button type="button" class="btn btn-secondary" onclick="closeEditServer()">取消</button><button type="button" class="btn btn-primary" onclick="saveEditServer()">保存修改</button></div>
   </div>
 </div>
 {% endblock %}
@@ -339,6 +364,133 @@ function addServer() {
   });
 }
 
+function currentAddServerPayload() {
+  return {
+    ip: document.getElementById('ip').value.trim(),
+    port: parseInt(document.getElementById('port').value, 10),
+    username: document.getElementById('username').value.trim(),
+    auth_type: document.getElementById('authType').value,
+    password: document.getElementById('password').value,
+    private_key: document.getElementById('privateKey').value,
+    key_passphrase: document.getElementById('keyPassphrase').value
+  };
+}
+
+async function testServerConnection() {
+  var payload = currentAddServerPayload();
+  if (!payload.ip || !payload.port || !payload.username ||
+      (payload.auth_type === 'password' && !payload.password) ||
+      (payload.auth_type === 'key' && !payload.private_key.trim())) {
+    alert('请完整填写服务器连接信息后再测试');
+    return;
+  }
+  var button = document.getElementById('testServerBtn');
+  button.disabled = true;
+  button.textContent = '测试中…';
+  try {
+    var response = await fetch('/api/servers/test-connection', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload), credentials: 'include'
+    });
+    var data = await response.json();
+    await uiAlert(data.msg || (data.ok ? 'SSH连接测试成功' : 'SSH连接测试失败'), data.ok ? 'success' : 'error');
+  } catch (error) {
+    await uiAlert('连接测试请求失败，请稍后重试', 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = '测试连接';
+  }
+}
+
+async function openEditServer(serverId) {
+  try {
+    var response = await fetch('/api/servers', {credentials: 'include'});
+    var servers = await response.json();
+    var server = servers.find(function(item) { return item.id === serverId; });
+    if (!server) { alert('服务器不存在或已被删除'); return; }
+    document.getElementById('editServerId').value = server.id;
+    document.getElementById('editIp').value = server.ip;
+    document.getElementById('editPort').value = server.port;
+    document.getElementById('editUsername').value = server.username;
+    document.getElementById('editAuthType').value = server.auth_type || 'password';
+    document.getElementById('editPassword').value = '';
+    document.getElementById('editPrivateKey').value = '';
+    document.getElementById('editKeyPassphrase').value = '';
+    document.getElementById('editNotes').value = server.notes || '';
+    var groupIds = (server.groups || []).map(function(group) { return group.id; });
+    document.querySelectorAll('input[name="editServerGroups"]').forEach(function(checkbox) {
+      checkbox.checked = groupIds.indexOf(parseInt(checkbox.value, 10)) !== -1;
+    });
+    toggleEditAuthFields();
+    document.getElementById('editServerOverlay').style.display = 'flex';
+  } catch (error) {
+    alert('加载服务器信息失败');
+  }
+}
+
+function closeEditServer() { document.getElementById('editServerOverlay').style.display = 'none'; }
+
+function toggleEditAuthFields() {
+  var isKey = document.getElementById('editAuthType').value === 'key';
+  document.getElementById('editPasswordAuthField').style.display = isKey ? 'none' : '';
+  document.getElementById('editKeyAuthFields').style.display = isKey ? 'block' : 'none';
+}
+
+function currentEditServerPayload() {
+  return {
+    id: parseInt(document.getElementById('editServerId').value, 10),
+    ip: document.getElementById('editIp').value.trim(),
+    port: parseInt(document.getElementById('editPort').value, 10),
+    username: document.getElementById('editUsername').value.trim(),
+    auth_type: document.getElementById('editAuthType').value,
+    password: document.getElementById('editPassword').value,
+    private_key: document.getElementById('editPrivateKey').value,
+    key_passphrase: document.getElementById('editKeyPassphrase').value
+  };
+}
+
+async function testEditServerConnection() {
+  var payload = currentEditServerPayload();
+  if (!payload.ip || !payload.port || !payload.username) {
+    alert('请完整填写服务器地址、端口和用户名');
+    return;
+  }
+  var button = document.getElementById('editTestServerBtn');
+  button.disabled = true;
+  button.textContent = '测试中…';
+  try {
+    var response = await fetch('/api/servers/test-connection', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload), credentials: 'include'
+    });
+    var data = await response.json();
+    await uiAlert(data.msg || (data.ok ? 'SSH连接测试成功' : 'SSH连接测试失败'), data.ok ? 'success' : 'error');
+  } catch (error) {
+    await uiAlert('连接测试请求失败，请稍后重试', 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = '测试连接';
+  }
+}
+
+async function saveEditServer() {
+  var groupIds = [];
+  document.querySelectorAll('input[name="editServerGroups"]:checked').forEach(function(checkbox) { groupIds.push(parseInt(checkbox.value, 10)); });
+  var payload = currentEditServerPayload();
+  payload.notes = document.getElementById('editNotes').value.trim();
+  payload.group_ids = groupIds;
+  try {
+    var response = await fetch('/api/servers', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload), credentials: 'include'});
+    var data = await response.json();
+    if (!data.ok) { await uiAlert('修改失败: ' + (data.msg || '未知错误'), 'error'); return; }
+    await uiAlert('服务器修改成功', 'success');
+    closeEditServer();
+    location.reload();
+  } catch (error) {
+    alert('修改服务器失败，请重试');
+  }
+}
+
 async function deleteServer(serverId) {
   if (!(await uiConfirm('确定要删除这个服务器吗？', { type: 'error', okText: '删除' }))) {
     return;
@@ -398,6 +550,7 @@ function loadServers() {
         '<td class="groups-cell">' + groupTags + '</td>' +
         '<td class="notes-cell">' + (server.notes || '-') + '</td>' +
         '<td>' +
+        '<button class="btn btn-sm btn-primary" onclick="openEditServer(' + server.id + ')">编辑</button> ' +
         '<button class="btn btn-sm btn-danger" onclick="deleteServer(' + server.id + ')">删除</button>' +
         '</td>' +
         '</tr>';
