@@ -557,6 +557,7 @@ document.addEventListener('DOMContentLoaded', function() {
 var currentRun = null;
 var pollInterval = null;
 var lastMessage = '';
+var renderedLogCount = 0;
 
 function runTask(taskId) {
   var logBox = document.getElementById('logBox');
@@ -569,6 +570,7 @@ function runTask(taskId) {
   if (progressPercent) progressPercent.textContent = '0%';
   if (downloadBox) downloadBox.innerHTML = '';
   lastMessage = '';
+  renderedLogCount = 0;
   
   console.log('Running task:', taskId);
   axios.post('/api/run_task', { task_id: taskId })
@@ -595,10 +597,15 @@ function pollTaskProgress() {
   axios.get('/api/inspection_progress', { params: { run_id: currentRun } })
     .then(function(resp) {
       var data = resp.data;
-      if (data.message && data.message !== lastMessage) {
+      if (Array.isArray(data.logs)) {
+        for (var i = renderedLogCount; i < data.logs.length; i++) {
+          log(data.logs[i]);
+        }
+        renderedLogCount = data.logs.length;
+      } else if (data.message && data.message !== lastMessage) {
         log(data.message);
-        lastMessage = data.message;
       }
+      lastMessage = data.message || lastMessage;
       if (typeof data.percent === 'number') {
         document.getElementById('progressBar').style.width = data.percent + '%';
         document.getElementById('progressPercent').textContent = data.percent + '%';
@@ -702,6 +709,7 @@ function loadTask(taskId) {
       document.getElementById('editScheduleTime').value = task.schedule_time || '';
       
       document.getElementById('taskEditSection').style.display = 'block';
+      document.getElementById('taskEditSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
     })
     .catch(function(error) {
       var errorMsg = error.response && error.response.data && error.response.data.msg ? error.response.data.msg : error.message;

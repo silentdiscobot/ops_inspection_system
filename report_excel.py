@@ -23,6 +23,10 @@ def set_column_auto_width(ws):
 
 def generate_excel_report(project_name: str, inspector: str, date_str: str, rows: List[Dict[str, Any]], proxy_results: List[Dict[str, Any]] = None, check_cpu: bool = True, check_mem: bool = True, check_disk: bool = True, task_name: str = None) -> str:
     wb = Workbook()
+    report_name = (task_name or project_name or "巡检报告").strip()
+    wb.properties.title = report_name
+    wb.properties.creator = report_name
+    wb.properties.subject = report_name
     ws = wb.active
     ws.title = "服务器巡检报告"
 

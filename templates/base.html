@@ -6,7 +6,7 @@
   <meta name="csrf-token" content="{{ csrf_token }}">
   <title>灵兔洞察系统</title>
   <link href="/static/lib/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=7">
+  <link rel="stylesheet" href="/static/styles.css?v=10">
 </head>
 <body>
   <nav class="sidebar" id="sidebar">
@@ -41,10 +41,10 @@
       
       {% if current_user.role == 'admin' %}
       <div class="menu-dropdown">
-        <a href="#" class="menu-item menu-dropdown-toggle" onclick="toggleDropdown(this, event); return false;">
+        <a href="#" class="menu-item menu-dropdown-toggle system-menu-item" onclick="toggleDropdown(this, event); return false;">
           <span class="menu-icon">⚙️</span>
           <span class="menu-text">系统管理项</span>
-          <span class="menu-arrow">▼</span>
+          <span class="menu-arrow" aria-hidden="true"></span>
         </a>
         <div class="menu-dropdown-content">
           <a href="/users" class="menu-item sub-menu-item">
@@ -71,7 +71,7 @@
   
   <script src="/static/lib/socket.io.min.js"></script>
   <script src="/static/lib/axios.min.js"></script>
-  <script src="/static/app.js?v=4"></script>
+  <script src="/static/app.js?v=5"></script>
   <script>
     function toggleSidebar() {
       document.getElementById('sidebar').classList.toggle('collapsed');

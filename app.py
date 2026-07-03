@@ -1020,10 +1020,15 @@ def enqueue_inspection(task_name, project_name, inspector, report_format='excel'
 
 def update_progress(run_id, message, percent, report_path=None):
     """更新巡检进度"""
+    previous = inspection_progress.get(run_id) or {}
+    logs = list(previous.get("logs") or [])
+    if message and (not logs or logs[-1] != message):
+        logs.append(message)
     inspection_progress[run_id] = {
         "message": message,
         "percent": percent,
-        "report_path": report_path
+        "report_path": report_path or previous.get("report_path"),
+        "logs": logs[-500:]
     }
     update_inspection_run_progress(run_id, message, percent, report_path)
     # 保存进度到文件，防止服务器重启丢失
@@ -1293,12 +1298,14 @@ def api_inspection_progress():
     if run_id:
         run = get_inspection_run(run_id)
         if run:
+            live_progress = inspection_progress.get(run_id) or {}
             return jsonify({
                 "message": run.get("message") or "",
                 "percent": run.get("progress") or 0,
                 "report_path": run.get("report_path"),
                 "status": run.get("status"),
-                "error": run.get("error")
+                "error": run.get("error"),
+                "logs": live_progress.get("logs") or []
             })
     if run_id and run_id in inspection_progress:
         return jsonify(inspection_progress[run_id])

@@ -185,6 +185,25 @@
   white-space: nowrap;
 }
 
+/* 仅缩小系统管理项右侧三角，给完整文字留出空间。 */
+.system-menu-item .menu-arrow {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translateY(-1px);
+  transform-origin: center;
+}
+
+.execution-log-section {
+  margin-top: 2.25rem;
+}
+
+.menu-dropdown.expanded .system-menu-item .menu-arrow {
+  transform: rotate(225deg) translate(-1px, -1px);
+}
+
 .sidebar-footer {
   padding: 1rem;
   padding-bottom: 1rem;

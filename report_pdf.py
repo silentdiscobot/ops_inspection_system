@@ -111,6 +111,7 @@ def generate_pdf_report(project_name: str, inspector: str, date_str: str, rows: 
     os.makedirs(REPORT_DIR, exist_ok=True)
     fname = build_report_filename(task_name or project_name, "pdf")
     out_path = os.path.join(REPORT_DIR, fname)
+    report_name = os.path.splitext(fname)[0]
     
     doc = SimpleDocTemplate(out_path, pagesize=A4, leftMargin=20*mm, rightMargin=20*mm, topMargin=20*mm, bottomMargin=20*mm)
     elements = []
@@ -487,5 +488,10 @@ def generate_pdf_report(project_name: str, inspector: str, date_str: str, rows: 
     elements.append(sign_table)
     
     # 构建文档
-    doc.build(elements)
+    def set_report_metadata(canvas, _doc):
+        canvas.setTitle(report_name)
+        canvas.setAuthor(report_name)
+        canvas.setSubject(report_name)
+
+    doc.build(elements, onFirstPage=set_report_metadata, onLaterPages=set_report_metadata)
     return out_path

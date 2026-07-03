@@ -67,62 +67,6 @@
   </div>
 </div>
 
-<div class="row mt-4">
-  <div class="col-lg-12">
-    <div class="apple-card">
-      <div class="apple-card-header">
-        <h3 class="apple-card-title">最近执行记录</h3>
-      </div>
-      <div class="form-section table-responsive">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>任务名称</th>
-              <th>来源</th>
-              <th>状态</th>
-              <th>进度</th>
-              <th>尝试次数</th>
-              <th>创建时间</th>
-              <th>完成时间</th>
-              <th>报告</th>
-            </tr>
-          </thead>
-          <tbody id="runHistoryBody">
-            {% for run in runs %}
-            <tr>
-              <td>{{ run.task_name }}</td>
-              <td>
-                {% if run.source == 'scheduled' %}定时
-                {% elif run.source == 'saved' %}手动执行任务
-                {% else %}临时巡检{% endif %}
-              </td>
-              <td>
-                {% if run.status == 'queued' %}<span class="badge bg-secondary">排队中</span>
-                {% elif run.status == 'running' %}<span class="badge bg-primary">执行中</span>
-                {% elif run.status == 'success' %}<span class="badge bg-success">成功</span>
-                {% else %}<span class="badge bg-danger">失败</span>{% endif %}
-              </td>
-              <td>{{ run.progress }}%</td>
-              <td>{{ run.attempts }}/{{ run.max_attempts }}</td>
-              <td>{{ run.created_at }}</td>
-              <td>{{ run.finished_at or '-' }}</td>
-              <td>
-                {% if run.report_filename %}
-                <a href="/download/{{ run.report_filename | urlencode }}">下载</a>
-                {% else %}-{% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-            {% if not runs %}
-            <tr><td colspan="8" style="text-align:center;color:#86868b;">暂无执行记录</td></tr>
-            {% endif %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- 任务编辑区域 -->
 <div id="taskEditSection" style="display: none; margin-top: 20px;">
   <div class="card">
@@ -266,8 +210,9 @@
   </div>
 </div>
   
+<div class="row">
   <!-- 执行日志 -->
-  <div class="col-lg-12 mt-4">
+  <div class="col-lg-12 execution-log-section">
     <div class="apple-card">
       <div class="apple-card-header">
         <h3 class="apple-card-title">执行日志</h3>
@@ -288,6 +233,62 @@
       </div>
       
       <div id="downloadBox" class="mt-3"></div>
+    </div>
+  </div>
+</div>
+
+<div class="row mt-4">
+  <div class="col-lg-12">
+    <div class="apple-card">
+      <div class="apple-card-header">
+        <h3 class="apple-card-title">最近执行记录</h3>
+      </div>
+      <div class="form-section table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>任务名称</th>
+              <th>来源</th>
+              <th>状态</th>
+              <th>进度</th>
+              <th>尝试次数</th>
+              <th>创建时间</th>
+              <th>完成时间</th>
+              <th>报告</th>
+            </tr>
+          </thead>
+          <tbody id="runHistoryBody">
+            {% for run in runs %}
+            <tr>
+              <td>{{ run.task_name }}</td>
+              <td>
+                {% if run.source == 'scheduled' %}定时
+                {% elif run.source == 'saved' %}手动执行任务
+                {% else %}临时巡检{% endif %}
+              </td>
+              <td>
+                {% if run.status == 'queued' %}<span class="badge bg-secondary">排队中</span>
+                {% elif run.status == 'running' %}<span class="badge bg-primary">执行中</span>
+                {% elif run.status == 'success' %}<span class="badge bg-success">成功</span>
+                {% else %}<span class="badge bg-danger">失败</span>{% endif %}
+              </td>
+              <td>{{ run.progress }}%</td>
+              <td>{{ run.attempts }}/{{ run.max_attempts }}</td>
+              <td>{{ run.created_at }}</td>
+              <td>{{ run.finished_at or '-' }}</td>
+              <td>
+                {% if run.report_filename %}
+                <a href="/download/{{ run.report_filename | urlencode }}">下载</a>
+                {% else %}-{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+            {% if not runs %}
+            <tr><td colspan="8" style="text-align:center;color:#86868b;">暂无执行记录</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </div>
