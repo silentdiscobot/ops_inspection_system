@@ -1,0 +1,520 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">用户管理</h1>
+  <p class="page-subtitle">管理系统用户和权限</p>
+</div>
+
+<!-- 添加用户按钮 -->
+<div class="action-bar">
+  <button class="btn btn-primary" onclick="showAddUserModal()">+ 创建用户</button>
+</div>
+
+<!-- 用户列表 -->
+<div class="table-section">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>用户名</th>
+        <th>用户名称</th>
+        <th>联系方式</th>
+        <th>权限角色</th>
+        <th>创建日期</th>
+        <th>状态</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody id="user-list">
+      <tr>
+        <td colspan="7" class="loading">加载用户列表中...</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- 添加用户弹窗 -->
+<div class="modal-overlay" id="add-user-modal" style="display: none;">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>创建用户</h2>
+      <button class="modal-close" onclick="hideAddUserModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="add-user-form">
+        <div class="form-group">
+          <label>用户名 <span class="required">*</span></label>
+          <input type="text" id="new-username" required placeholder="请输入用户名">
+        </div>
+        <div class="form-group">
+          <label>用户名称 <span class="required">*</span></label>
+          <input type="text" id="new-display-name" required placeholder="请输入用户名称（仅支持中文和数字）">
+          <span class="help-text">仅允许中文和数字</span>
+        </div>
+        <div class="form-group">
+          <label>联系方式</label>
+          <input type="text" id="new-contact" placeholder="请输入联系方式">
+        </div>
+        <div class="form-group">
+          <label>密码 <span class="required">*</span></label>
+          <input type="password" id="new-password" required placeholder="至少8位，包含大小写字母和数字">
+          <span class="help-text">密码至少8位，且必须包含大小写字母和数字</span>
+        </div>
+        <div class="form-group">
+          <label>权限角色 <span class="required">*</span></label>
+          <select id="new-role" class="form-select" required>
+            <option value="admin">超级管理员</option>
+            <option value="operator">系统操作员</option>
+            <option value="viewer">报告查看员</option>
+          </select>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="hideAddUserModal()">取消</button>
+          <button type="submit" class="btn btn-primary">创建</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- 编辑用户弹窗 -->
+<div class="modal-overlay" id="edit-user-modal" style="display: none;">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>编辑用户信息</h2>
+      <button class="modal-close" onclick="hideEditUserModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="edit-user-form">
+        <input type="hidden" id="edit-user-id">
+        <div class="form-group">
+          <label>用户名 <span class="required">*</span></label>
+          <input type="text" id="edit-username" required placeholder="请输入用户名">
+        </div>
+        <div class="form-group">
+          <label>用户名称 <span class="required">*</span></label>
+          <input type="text" id="edit-display-name" required placeholder="请输入用户名称（仅支持中文和数字）">
+          <span class="help-text">仅允许中文和数字</span>
+        </div>
+        <div class="form-group">
+          <label>联系方式</label>
+          <input type="text" id="edit-contact" placeholder="请输入联系方式">
+        </div>
+        <div class="form-group">
+          <label>密码</label>
+          <input type="password" id="edit-password" placeholder="留空则不修改密码">
+          <span class="help-text">密码必须包含大小写字母组合，留空则保持原密码</span>
+        </div>
+        <div class="form-group">
+          <label>权限角色 <span class="required">*</span></label>
+          <select id="edit-role" class="form-select" required>
+            <option value="admin">超级管理员</option>
+            <option value="operator">系统操作员</option>
+            <option value="viewer">报告查看员</option>
+          </select>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="hideEditUserModal()">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function loadUsers() {
+  fetch('/api/users', { credentials: 'include' })
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+      var tbody = document.getElementById('user-list');
+      tbody.innerHTML = '';
+      
+      if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无用户</td></tr>';
+        return;
+      }
+      
+      for (var i = 0; i < data.length; i++) {
+        var user = data[i];
+        var roleMap = {
+          'admin': '超级管理员',
+          'operator': '系统操作员',
+          'viewer': '报告查看员'
+        };
+        var roleText = roleMap[user.role] || user.role;
+        
+        var statusText = user.is_default ? '系统默认' : '普通用户';
+        var statusClass = user.is_default ? 'status-default' : 'status-normal';
+        
+        var row = document.createElement('tr');
+        var deleteBtn = user.is_default ? ' <span class="disabled">无法删除</span>' : '<button class="btn btn-danger btn-sm" onclick="deleteUser(' + user.id + ', \'' + user.username + '\')">删除</button>';
+        row.innerHTML = '<tr>' +
+          '<td>' + user.id + '</td>' +
+          '<td>' + user.username + '</td>' +
+          '<td>' + (user.display_name || '-') + '</td>' +
+          '<td>' + (user.contact || '-') + '</td>' +
+          '<td><span class="role-badge ' + user.role + '">' + roleText + '</span></td>' +
+          '<td>' + user.created_at + '</td>' +
+          '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>' +
+          '<td>' +
+          '<button class="btn btn-primary btn-sm" onclick="showEditUserModal(' + user.id + ', \'' + user.username + '\', \'' + (user.display_name || '') + '\', \'' + (user.contact || '') + '\', \'' + user.role + '\')">编辑</button>' +
+          deleteBtn +
+          '</td>' +
+          '</tr>';
+        tbody.appendChild(row);
+      }
+    })
+    .catch(function(error) {
+      console.error('加载用户列表失败:', error);
+      document.getElementById('user-list').innerHTML = '<tr><td colspan="7" class="error">加载失败</td></tr>';
+    });
+}
+
+function showAddUserModal() {
+  document.getElementById('add-user-modal').style.display = 'flex';
+  document.getElementById('add-user-form').reset();
+}
+
+function hideAddUserModal() {
+  document.getElementById('add-user-modal').style.display = 'none';
+}
+
+function validateDisplayName(displayName) {
+  var regex = /^[\u4e00-\u9fa50-9]+$/;
+  return regex.test(displayName);
+}
+
+document.getElementById('add-user-form').addEventListener('submit', function(e) {
+  e.preventDefault();
+  
+  var username = document.getElementById('new-username').value;
+  var displayName = document.getElementById('new-display-name').value;
+  var contact = document.getElementById('new-contact').value;
+  var password = document.getElementById('new-password').value;
+  var role = document.getElementById('new-role').value;
+  
+  if (!validateDisplayName(displayName)) {
+    alert('用户名称仅允许中文和数字');
+    return;
+  }
+  
+  if (!validatePassword(password)) {
+    alert('密码必须包含大小写字母组合');
+    return;
+  }
+  
+  fetch('/api/users', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    credentials: 'include',
+    body: JSON.stringify({ username: username, display_name: displayName, contact: contact, password: password, role: role })
+  })
+  .then(function(response) {
+    if (!response.ok) {
+      alert('HTTP错误: ' + response.status + ' - ' + response.statusText);
+      return;
+    }
+    return response.json();
+  })
+  .then(function(result) {
+    if (result.success) {
+      alert('用户创建成功');
+      hideAddUserModal();
+      loadUsers();
+    } else {
+      alert(result.message || '创建失败');
+    }
+  })
+  .catch(function(error) {
+    console.error('创建用户错误:', error);
+    alert('网络错误: ' + (error.message || '未知错误'));
+  });
+});
+
+function validatePassword(password) {
+  return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(password);
+}
+
+function showEditUserModal(userId, username, displayName, contact, role) {
+  document.getElementById('edit-user-id').value = userId;
+  document.getElementById('edit-username').value = username;
+  document.getElementById('edit-display-name').value = displayName || '';
+  document.getElementById('edit-contact').value = contact || '';
+  document.getElementById('edit-role').value = role;
+  document.getElementById('edit-password').value = '';
+  document.getElementById('edit-user-modal').style.display = 'flex';
+}
+
+function hideEditUserModal() {
+  document.getElementById('edit-user-modal').style.display = 'none';
+}
+
+document.getElementById('edit-user-form').addEventListener('submit', function(e) {
+  e.preventDefault();
+  
+  var userId = document.getElementById('edit-user-id').value;
+  var username = document.getElementById('edit-username').value;
+  var displayName = document.getElementById('edit-display-name').value;
+  var contact = document.getElementById('edit-contact').value;
+  var password = document.getElementById('edit-password').value;
+  var role = document.getElementById('edit-role').value;
+  
+  if (password && !validatePassword(password)) {
+    alert('密码必须包含大小写字母组合');
+    return;
+  }
+  
+  fetch('/api/users/' + userId, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    credentials: 'include',
+    body: JSON.stringify({ username: username, display_name: displayName, contact: contact, password: password, role: role })
+  })
+  .then(function(response) {
+    return response.json();
+  })
+  .then(function(result) {
+    if (result.success) {
+      alert('用户信息更新成功');
+      hideEditUserModal();
+      loadUsers();
+    } else {
+      alert(result.message || '更新失败');
+    }
+  })
+  .catch(function(error) {
+    alert('网络错误');
+  });
+});
+
+function deleteUser(userId, username) {
+  if (!confirm('确定要删除用户 "' + username + '" 吗？')) {
+    return;
+  }
+  
+  fetch('/api/users/' + userId, {
+    method: 'DELETE',
+    credentials: 'include'
+  })
+  .then(function(response) {
+    return response.json();
+  })
+  .then(function(result) {
+    if (result.success) {
+      alert('删除成功');
+      loadUsers();
+    } else {
+      alert(result.message || '删除失败');
+    }
+  })
+  .catch(function(error) {
+    alert('网络错误');
+  });
+}
+
+document.addEventListener('DOMContentLoaded', loadUsers);
+</script>
+
+<style>
+.action-bar {
+  margin-bottom: 20px;
+}
+
+.table-section {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  overflow: hidden;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th,
+.data-table td {
+  padding: 12px 16px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.data-table th {
+  background: #f8f9fa;
+  font-weight: 600;
+  color: #333;
+}
+
+.data-table tr:hover {
+  background: #f8f9fa;
+}
+
+.data-table .loading,
+.data-table .empty,
+.data-table .error {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+}
+
+.role-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.role-badge.admin {
+  background: #dc2626;
+  color: white;
+}
+
+.role-badge.operator {
+  background: #f59e0b;
+  color: white;
+}
+
+.role-badge.viewer {
+  background: #22c55e;
+  color: white;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-badge.status-default {
+  background: #6b7280;
+  color: white;
+}
+
+.status-badge.status-normal {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.btn-sm {
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.btn-danger {
+  background: #dc2626;
+  border-color: #dc2626;
+}
+
+.btn-danger:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: white;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #999;
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.required {
+  color: #dc2626;
+}
+
+.help-text {
+  display: block;
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.btn-secondary {
+  background: #e5e7eb;
+  border-color: #d1d5db;
+  color: #374151;
+}
+
+.btn-secondary:hover {
+  background: #d1d5db;
+}
+
+.disabled {
+  color: #999;
+  font-size: 12px;
+}
+</style>
+{% endblock %}

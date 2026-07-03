@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs & Data
+logs/
+data/
+*.log
+
+# Reports
+reports/
+*.xlsx
+*.pdf
+
+# Temporary files
+tmp/
+
+# Environment
+.env
+.env.local
+
+# Cookies
+cookies*.txt

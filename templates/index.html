@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title" style="cursor: pointer;" onclick="showSidebar()">灵兔洞察系统</h1>
+  <p class="page-subtitle">统一管理服务器资产，自动执行日常巡检，生成标准化报告</p>
+</div>
+
+<div class="hero-section">
+  <h1>欢迎您！{{ current_user.display_name or current_user.username }}</h1>
+  <p class="lead">{{ ["一万年太久，只争朝夕！", "星星之火，可以燎原！", "从群众中来，到群众中去！", "虚心使人进步，骄傲使人落后！", "不管风吹浪打，胜似闲庭信步！"] | random }}</p>
+  <a href="/inspect" class="btn btn-primary btn-lg" >
+    开始巡检
+  </a>
+</div>
+
+<div class="feature-grid">
+  <a href="/servers" class="feature-card-link">
+    <div class="feature-card">
+      <div class="feature-icon" style="font-size: 1.5rem;">🖥️</div>
+      <div class="feature-title">服务器管理</div>
+      <div class="feature-desc">分组管理服务器资产，密码AES加密存储</div>
+    </div>
+  </a>
+  
+  <a href="/inspect" class="feature-card-link">
+    <div class="feature-card">
+      <div class="feature-icon" style="font-size: 1.5rem;">🔍</div>
+      <div class="feature-title">服务器巡检</div>
+      <div class="feature-desc">自动检查CPU、内存、磁盘使用情况</div>
+    </div>
+  </a>
+  
+  <a href="/reports" class="feature-card-link">
+    <div class="feature-card">
+      <div class="feature-icon" style="font-size: 1.5rem;">📊</div>
+      <div class="feature-title">报告导出</div>
+      <div class="feature-desc">生成Excel/PDF格式巡检报告，便于存档分析</div>
+    </div>
+  </a>
+</div>
+{% endblock %}
