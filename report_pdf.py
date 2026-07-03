@@ -1,14 +1,9 @@
 # -*- coding: utf-8 -*-
 import os
+from html import escape
 from typing import List, Dict, Any
 from config import REPORT_DIR, CPU_THRESHOLD, MEM_THRESHOLD, DISK_THRESHOLD
 from report_utils import build_report_filename
-
-def over_limit_partitions(row):
-    return [p for p in row.get("disk_partitions", []) if p.get("usage", 0) > DISK_THRESHOLD]
-
-def partition_text(row):
-    return "<br/>".join(f'{p.get("mount", "?")} ({p.get("usage", 0)}%)' for p in over_limit_partitions(row)) or "-"
 
 try:
     from reportlab.lib.pagesizes import A4
@@ -225,7 +220,6 @@ def generate_pdf_report(project_name: str, inspector: str, date_str: str, rows: 
         headers.append("内存使用率")
     if check_disk:
         headers.append("磁盘使用率")
-        headers.append("超限分区")
     headers.append("状态")
     table_data = [headers]
     
@@ -269,7 +263,6 @@ def generate_pdf_report(project_name: str, inspector: str, date_str: str, rows: 
             row_data.append(f'{row.get("mem", 0)}%')
         if check_disk:
             row_data.append(f'{row.get("disk", 0)}%')
-            row_data.append(Paragraph(partition_text(row), normal_style))
         row_data.append(status)
         table_data.append(row_data)
     
@@ -281,7 +274,7 @@ def generate_pdf_report(project_name: str, inspector: str, date_str: str, rows: 
     if check_mem:
         col_widths.append(16*mm)
     if check_disk:
-        col_widths.extend([16*mm, 36*mm])
+        col_widths.append(24*mm)
     col_widths.append(24*mm)
     server_table = Table(table_data, colWidths=col_widths)
     
@@ -424,6 +417,7 @@ def generate_pdf_report(project_name: str, inspector: str, date_str: str, rows: 
     
     abnormal_lines = []
     for row in rows:
+        ip = row.get('ip', '未知IP')
         reasons = []
         if not row.get("ok"):
             reasons.append(f'连接失败: {row.get("error", "未知错误")}')
@@ -432,12 +426,19 @@ def generate_pdf_report(project_name: str, inspector: str, date_str: str, rows: 
                 reasons.append(f'CPU使用率过高 {row["cpu"]}%')
             if check_mem and row.get("mem", 0) > MEM_THRESHOLD:
                 reasons.append(f'内存使用率过高 {row["mem"]}%')
-            if check_disk and row.get("disk", 0) > DISK_THRESHOLD:
-                details = partition_text(row).replace("<br/>", "、")
-                reasons.append(f'磁盘分区使用率过高: {details}')
         
         if reasons:
-            abnormal_lines.append(f"{row.get('ip', '未知IP')}: {'; '.join(reasons)}")
+            abnormal_lines.append(f"{ip}: {'; '.join(reasons)}")
+        if row.get("ok") and check_disk:
+            disk_issues = [p for p in row.get("disk_partitions", []) if p.get("usage", 0) > DISK_THRESHOLD]
+            if disk_issues:
+                for partition in disk_issues:
+                    abnormal_lines.append(
+                        f'{ip}: 磁盘使用率过高 - 文件系统 {partition.get("filesystem", "未知")}, '
+                        f'挂载点 {partition.get("mount", "未知")}, 使用率 {partition.get("usage", 0)}%'
+                    )
+            elif row.get("disk", 0) > DISK_THRESHOLD:
+                abnormal_lines.append(f'{ip}: 磁盘最高使用率过高 {row["disk"]}%')
     
     # 添加网关代理异常
     if proxy_results:
@@ -451,7 +452,7 @@ def generate_pdf_report(project_name: str, inspector: str, date_str: str, rows: 
     
     if abnormal_lines:
         for line in abnormal_lines:
-            elements.append(Paragraph(line, red_style))
+            elements.append(Paragraph(escape(line), red_style))
     else:
         elements.append(Paragraph("本次巡检未发现异常问题", green_style))
     

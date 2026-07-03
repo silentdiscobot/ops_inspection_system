@@ -21,6 +21,106 @@
   }
 })();
 
+// 全局玻璃拟态提示框，替代浏览器原生 alert / confirm。
+(function initGlassDialogs() {
+  function inferType(message) {
+    var text = String(message || '');
+    if (/失败|错误|异常|至少|请输入|不允许|必须/.test(text)) return 'error';
+    if (/成功|完成|已保存|已删除|已更新/.test(text)) return 'success';
+    return 'info';
+  }
+
+  function showDialog(options) {
+    options = options || {};
+    return new Promise(function(resolve) {
+      var type = options.type || 'info';
+      var isConfirm = !!options.confirm;
+      var overlay = document.createElement('div');
+      overlay.className = 'glass-dialog-overlay';
+
+      var dialog = document.createElement('div');
+      dialog.className = 'glass-dialog glass-dialog-' + type;
+      dialog.setAttribute('role', 'alertdialog');
+      dialog.setAttribute('aria-modal', 'true');
+
+      var icon = document.createElement('div');
+      icon.className = 'glass-dialog-icon';
+      icon.textContent = type === 'success' ? '✓' : (type === 'error' ? '!' : (isConfirm ? '?' : 'i'));
+
+      var content = document.createElement('div');
+      content.className = 'glass-dialog-content';
+      var title = document.createElement('div');
+      title.className = 'glass-dialog-title';
+      title.textContent = options.title || (isConfirm ? '请确认' : (type === 'success' ? '操作成功' : (type === 'error' ? '提示' : '系统提示')));
+      var message = document.createElement('div');
+      message.className = 'glass-dialog-message';
+      message.textContent = String(options.message || '');
+      content.appendChild(title);
+      content.appendChild(message);
+
+      var actions = document.createElement('div');
+      actions.className = 'glass-dialog-actions';
+      var cancelButton = null;
+      if (isConfirm) {
+        cancelButton = document.createElement('button');
+        cancelButton.type = 'button';
+        cancelButton.className = 'glass-dialog-btn glass-dialog-btn-secondary';
+        cancelButton.textContent = options.cancelText || '取消';
+        actions.appendChild(cancelButton);
+      }
+      var okButton = document.createElement('button');
+      okButton.type = 'button';
+      okButton.className = 'glass-dialog-btn glass-dialog-btn-primary';
+      okButton.textContent = options.okText || (isConfirm ? '确认' : '知道了');
+      actions.appendChild(okButton);
+
+      dialog.appendChild(icon);
+      dialog.appendChild(content);
+      dialog.appendChild(actions);
+      overlay.appendChild(dialog);
+      document.body.appendChild(overlay);
+
+      var settled = false;
+      function close(result) {
+        if (settled) return;
+        settled = true;
+        document.removeEventListener('keydown', onKeydown);
+        overlay.classList.add('is-closing');
+        window.setTimeout(function() {
+          if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+          resolve(result);
+        }, 160);
+      }
+      function onKeydown(event) {
+        if (event.key === 'Escape') close(false);
+        if (event.key === 'Enter') close(true);
+      }
+      okButton.addEventListener('click', function() { close(true); });
+      if (cancelButton) cancelButton.addEventListener('click', function() { close(false); });
+      overlay.addEventListener('click', function(event) {
+        if (event.target === overlay && isConfirm) close(false);
+      });
+      document.addEventListener('keydown', onKeydown);
+      window.setTimeout(function() {
+        overlay.classList.add('is-visible');
+        okButton.focus();
+      }, 10);
+    });
+  }
+
+  window.uiAlert = function(message, type, title) {
+    return showDialog({ message: message, type: type || inferType(message), title: title });
+  };
+  window.uiConfirm = function(message, options) {
+    options = options || {};
+    options.message = message;
+    options.confirm = true;
+    options.type = options.type || 'info';
+    return showDialog(options);
+  };
+  window.alert = function(message) { return window.uiAlert(message); };
+})();
+
 function showSidebar() {
   var sidebar = document.getElementById('sidebar');
   sidebar.classList.remove('collapsed');
@@ -524,8 +624,8 @@ function pollTaskProgress() {
 }
 
 // 删除巡检任务
-function deleteTask(taskId) {
-  if (!confirm('确定要删除该任务吗？')) return;
+async function deleteTask(taskId) {
+  if (!(await uiConfirm('确定要删除该任务吗？', { type: 'error', okText: '删除' }))) return;
   
   axios.post('/api/delete_task', { task_id: taskId })
     .then(function(resp) {

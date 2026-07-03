@@ -311,7 +311,7 @@ def inspect_local_server(ip: str, check_cpu=True, check_mem=True, check_disk=Tru
         if check_mem:
             res["mem"] = _local_mem_percent()
         if check_disk:
-            disk_out = run_local_cmd("df -P")
+            disk_out = run_local_cmd("df -hP")
             res["disk_partitions"] = parse_disks(disk_out)
             res["disk"] = max((item["usage"] for item in res["disk_partitions"]), default=0.0)
         res["ok"] = True
@@ -373,7 +373,7 @@ def inspect_server(ip: str, port: int, username: str, password: str = None,
 
         # disk (all mounts reported by df)
         if check_disk:
-            disk_out = run_cmd(ssh, "df -P")
+            disk_out = run_cmd(ssh, "df -hP")
             res["disk_partitions"] = parse_disks(disk_out)
             res["disk"] = max((item["usage"] for item in res["disk_partitions"]), default=0.0)
 

@@ -228,8 +228,8 @@ function addGroup() {
   });
 }
 
-function deleteGroup(groupId) {
-  if (!confirm('确定要删除这个分组吗？')) {
+async function deleteGroup(groupId) {
+  if (!(await uiConfirm('确定要删除这个分组吗？', { type: 'error', okText: '删除' }))) {
     return;
   }
   
@@ -339,8 +339,8 @@ function addServer() {
   });
 }
 
-function deleteServer(serverId) {
-  if (!confirm('确定要删除这个服务器吗？')) {
+async function deleteServer(serverId) {
+  if (!(await uiConfirm('确定要删除这个服务器吗？', { type: 'error', okText: '删除' }))) {
     return;
   }
   

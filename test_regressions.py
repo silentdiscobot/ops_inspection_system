@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 import app
 import models
 import paramiko
-from inspection import compact_uptime, connect_ssh, inspect_server, parse_cpu, parse_disks, parse_mem, parse_proc_cpu, parse_private_key, sanitize_curl_command
+from inspection import compact_uptime, connect_ssh, inspect_server, parse_cpu, parse_disk, parse_disks, parse_mem, parse_proc_cpu, parse_private_key, sanitize_curl_command
 from report_utils import build_report_filename
 
 
@@ -27,6 +27,7 @@ tmpfs 100 99 1 99% /run
             {"filesystem": "tmpfs", "mount": "/run", "usage": 99.0},
             {"filesystem": "/dev/loop0", "mount": "/snap/core/1", "usage": 100.0},
         ])
+        self.assertEqual(parse_disk(output), 100.0)
 
     def test_uptime_keeps_only_largest_unit(self):
         self.assertEqual(compact_uptime("up 4 weeks, 6 days, 3 hours, 12 minutes"), "4周")

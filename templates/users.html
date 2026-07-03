@@ -292,8 +292,8 @@ document.getElementById('edit-user-form').addEventListener('submit', function(e)
   });
 });
 
-function deleteUser(userId, username) {
-  if (!confirm('确定要删除用户 "' + username + '" 吗？')) {
+async function deleteUser(userId, username) {
+  if (!(await uiConfirm('确定要删除用户 "' + username + '" 吗？', { type: 'error', okText: '删除' }))) {
     return;
   }
   

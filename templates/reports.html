@@ -55,8 +55,8 @@ function loadReports() {
     });
 }
 
-function deleteReport(filename) {
-  if (!confirm('确定要删除这份报告吗？')) {
+async function deleteReport(filename) {
+  if (!(await uiConfirm('确定要删除这份报告吗？', { type: 'error', okText: '删除' }))) {
     return;
   }
   

@@ -25,5 +25,5 @@ python app.py
 
 - 阈值默认为 80%，可通过环境变量调整：`OPS_CPU_THRESHOLD`/`OPS_MEM_THRESHOLD`/`OPS_DISK_THRESHOLD`。
 - 服务器密码采用 AES-GCM 加密存储，密钥从 `OPS_AES_KEY`（base64/hex）或 `OPS_AES_KEY_FILE` 读取，均未设置时使用内置开发密钥（请勿用于生产）。
-- Linux 巡检优先读取 `/proc/uptime`、`/proc/stat`、`/proc/meminfo`，并使用 `top`、`free` 等命令兼容回退；磁盘使用率通过 `df -P` 获取全部挂载点，不做过滤，报告列出每个超限分区。
+- Linux 巡检优先读取 `/proc/uptime`、`/proc/stat`、`/proc/meminfo`，并使用 `top`、`free` 等命令兼容回退；磁盘通过 `df -hP` 获取全部挂载点，不做过滤，主表展示最高使用率，异常详情逐条展示超过阈值的挂载点。
 - 生成的报告输出目录：`reports/`。

@@ -7,12 +7,6 @@ from openpyxl.utils import get_column_letter
 from config import REPORT_DIR, CPU_THRESHOLD, MEM_THRESHOLD, DISK_THRESHOLD
 from report_utils import build_report_filename
 
-def over_limit_partitions(row):
-    return [p for p in row.get("disk_partitions", []) if p.get("usage", 0) > DISK_THRESHOLD]
-
-def partition_text(row):
-    return "\n".join(f'{p.get("mount", "?")} ({p.get("usage", 0)}%)' for p in over_limit_partitions(row)) or "-"
-
 def set_column_auto_width(ws):
     """自动调整列宽"""
     for col in ws.columns:
@@ -89,7 +83,6 @@ def generate_excel_report(project_name: str, inspector: str, date_str: str, rows
         headers.append("内存使用率")
     if check_disk:
         headers.append("磁盘使用率")
-        headers.append("超限分区")
     headers.append("状态")
     ws.append(headers)
     
@@ -144,15 +137,12 @@ def generate_excel_report(project_name: str, inspector: str, date_str: str, rows
             data.append(f'{row.get("mem", 0)}%')
         if check_disk:
             data.append(f'{row.get("disk", 0)}%')
-            data.append(partition_text(row))
         data.append(status)
         
         ws.append(data)
         for c in range(1, len(headers)+1):
             cell = ws.cell(ws.max_row, c)
             cell.alignment = center_alignment
-            if check_disk and headers[c - 1] == "超限分区":
-                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
             cell.border = thin_border
             cell.fill = row_fill
             if c == len(headers):
@@ -273,6 +263,7 @@ def generate_excel_report(project_name: str, inspector: str, date_str: str, rows
     
     abnormal_lines = []
     for row in rows:
+        ip = row.get('ip', '未知IP')
         reasons = []
         if not row.get("ok"):
             reasons.append(f'连接失败: {row.get("error", "未知错误")}')
@@ -281,12 +272,19 @@ def generate_excel_report(project_name: str, inspector: str, date_str: str, rows
                 reasons.append(f'CPU使用率过高 {row["cpu"]}%')
             if check_mem and row.get("mem", 0) > MEM_THRESHOLD:
                 reasons.append(f'内存使用率过高 {row["mem"]}%')
-            if check_disk and row.get("disk", 0) > DISK_THRESHOLD:
-                details = partition_text(row).replace("\n", "、")
-                reasons.append(f'磁盘分区使用率过高: {details}')
         
         if reasons:
-            abnormal_lines.append(f"{row.get('ip', '未知IP')}: {'; '.join(reasons)}")
+            abnormal_lines.append(f"{ip}: {'; '.join(reasons)}")
+        if row.get("ok") and check_disk:
+            disk_issues = [p for p in row.get("disk_partitions", []) if p.get("usage", 0) > DISK_THRESHOLD]
+            if disk_issues:
+                for partition in disk_issues:
+                    abnormal_lines.append(
+                        f'{ip}: 磁盘使用率过高 - 文件系统 {partition.get("filesystem", "未知")}, '
+                        f'挂载点 {partition.get("mount", "未知")}, 使用率 {partition.get("usage", 0)}%'
+                    )
+            elif row.get("disk", 0) > DISK_THRESHOLD:
+                abnormal_lines.append(f'{ip}: 磁盘最高使用率过高 {row["disk"]}%')
     
     # 添加网关代理异常
     if proxy_results:
