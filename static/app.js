@@ -218,7 +218,7 @@ function setProgress(v) {
 }
 
 // 文档加载完成后执行
-document.addEventListener('DOMContentLoaded', function() {
+function initAppPage() {
   console.log('DOM loaded - app.js initialized');
   
   // 初始化selected状态 - 兼容低版本浏览器
@@ -551,7 +551,9 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('btnSaveTask not found');
   }
   
-});
+}
+document.addEventListener('DOMContentLoaded', initAppPage);
+document.addEventListener('lingtu:page-load', initAppPage);
 
 // 执行巡检任务
 var currentRun = null;
@@ -892,4 +894,8 @@ function initTaskEdit() {
 
 document.addEventListener('DOMContentLoaded', function() {
   initTaskEdit();
+});
+document.addEventListener('lingtu:page-load', initTaskEdit);
+document.addEventListener('lingtu:before-unmount', function() {
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
 });

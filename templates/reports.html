@@ -13,9 +13,8 @@
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-  loadReports();
-});
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadReports);
+else loadReports();
 
 function loadReports() {
   axios.get('/api/reports')

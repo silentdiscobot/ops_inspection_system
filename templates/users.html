@@ -317,7 +317,8 @@ async function deleteUser(userId, username) {
   });
 }
 
-document.addEventListener('DOMContentLoaded', loadUsers);
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadUsers);
+else loadUsers();
 </script>
 
 <style>

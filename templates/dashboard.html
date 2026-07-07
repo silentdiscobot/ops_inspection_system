@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="ops-wall" id="opsWall">
+  <canvas id="networkCanvas" aria-hidden="true"></canvas>
+  <div class="wall-noise" aria-hidden="true"></div>
+
+  <header class="wall-header">
+    <div class="wall-brand">
+      <span class="tech-mark"><i></i><b></b></span>
+      <div><span>LINGTU / OBSERVATORY</span><strong>灵兔 · 全域态势中心</strong></div>
+    </div>
+    <div class="wall-title"><span>INFRASTRUCTURE</span><h1>服务器运行态势</h1><i></i></div>
+    <div class="wall-tools"><div class="wall-clock"><strong id="wallTime">--:--:--</strong><span id="wallDate">----</span></div><button class="fullscreen-btn" id="fullscreenBtn" type="button" title="全屏展示"><i></i><span>全屏</span></button></div>
+  </header>
+
+  <section class="wall-kpis">
+    <article class="glass-kpi kpi-total"><span class="kpi-icon">◇</span><div><small>节点总数</small><strong id="totalCount">0</strong></div><i></i></article>
+    <article class="glass-kpi kpi-online"><span class="kpi-icon">●</span><div><small>正常运行</small><strong id="onlineCount">0</strong></div><i></i></article>
+    <article class="glass-kpi kpi-rate"><span class="kpi-icon">◌</span><div><small>在线率</small><strong id="onlineRate">0%</strong></div><i></i></article>
+    <article class="glass-kpi kpi-offline"><span class="kpi-icon">◆</span><div><small>异常节点</small><strong id="offlineCount">0</strong></div><i></i></article>
+  </section>
+
+  <section class="wall-stage">
+    <aside class="wall-panel status-panel">
+      <div class="panel-heading"><span>STATUS OVERVIEW</span><h2>运行概览</h2></div>
+      <div class="status-ring" id="statusRing"><div><strong id="ringRate">0</strong><small>% 在线</small></div></div>
+      <div class="legend"><span><i class="dot-online"></i>正常 <b id="legendOnline">0</b></span><span><i class="dot-offline"></i>掉线 <b id="legendOffline">0</b></span><span><i class="dot-checking"></i>探测中 <b id="legendChecking">0</b></span></div>
+      <div class="scan-note"><i></i><span>自动探测周期 20 秒<br>连续 60 秒未成功即判定掉线</span></div>
+    </aside>
+
+    <main class="server-universe">
+      <div class="universe-label"><span>LIVE TOPOLOGY</span><strong>实时节点拓扑</strong></div>
+      <div class="topology-pager" id="topologyPager" hidden><button type="button" id="topologyPrev" aria-label="上一组节点">‹</button><span id="topologyPage">1 / 1</span><button type="button" id="topologyNext" aria-label="下一组节点">›</button></div>
+      <div class="core-orb"><div class="orb-shell"><span class="core-logo"><i></i><b></b></span><em>LINGTU CORE</em></div><i class="orbit orbit-one"></i><i class="orbit orbit-two"></i></div>
+      <div class="server-nodes" id="serverNodes"></div>
+      <div class="floor-grid" aria-hidden="true"></div>
+      <div class="empty-universe" id="emptyUniverse" hidden><span>◇</span><strong>暂无服务器节点</strong><small>请先在服务器管理中添加资产</small></div>
+    </main>
+
+    <aside class="wall-panel node-panel">
+      <div class="panel-heading"><span>NODE MATRIX</span><h2>节点矩阵</h2></div>
+      <div class="node-list" id="nodeList"><div class="node-loading">正在建立感知链路…</div></div>
+      <div class="node-list-summary" id="nodeListSummary" hidden></div>
+    </aside>
+  </section>
+
+  <footer class="wall-footer"><span><i class="live-pulse"></i> LIVE MONITORING</span><span id="lastUpdated">等待首次同步</span><span>SSH HEALTH PROBE / AES SECURED</span></footer>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/dashboard.js?v=2"></script>{% endblock %}

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os, logging, sqlite3, threading, time, hashlib, hmac, re, secrets, json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from functools import wraps
 from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, make_response
@@ -39,6 +40,14 @@ LOGIN_MAX_FAILURES = 5
 LOGIN_FAILURE_WINDOW = 15 * 60
 _login_failures = {}
 _login_failures_lock = threading.Lock()
+
+# 可视化大屏服务器在线状态（仅保存在内存中，不暴露认证信息）
+SERVER_HEALTH_INTERVAL = 20
+SERVER_OFFLINE_AFTER = 60
+_server_health = {}
+_server_health_lock = threading.Lock()
+_server_health_thread = None
+_server_health_thread_lock = threading.Lock()
 
 # 角色定义
 ROLES = {
@@ -511,6 +520,14 @@ def servers_page():
     servers = list_servers()
     return render_template("servers.html", groups=groups, servers=servers)
 
+@app.route("/dashboard")
+@no_cache
+@login_required
+@role_required(['admin', 'operator'])
+def dashboard_page():
+    start_server_health_monitor()
+    return render_template("dashboard.html")
+
 @app.route("/reports")
 @no_cache
 @login_required
@@ -699,6 +716,116 @@ def api_servers():
         return jsonify({"ok": True})
 
 # ------------- Reports -------------
+def _probe_server_health(server):
+    """执行一次短超时 SSH 探测，并安全更新内存状态。"""
+    server_id = server['id']
+    now = time.time()
+    ok, error = False, ''
+    ssh = create_ssh_client()
+    try:
+        credentials = decrypt_server_credentials(load_aes_key(), server)
+        connect_ssh(
+            ssh, server['ip'], server['port'], server['username'],
+            password=credentials.get('password'),
+            private_key=credentials.get('private_key'),
+            key_passphrase=credentials.get('key_passphrase'),
+            timeout=8,
+        )
+        ok = True
+    except Exception as exc:
+        error = str(exc)[:160]
+    finally:
+        ssh.close()
+
+    with _server_health_lock:
+        state = _server_health.setdefault(server_id, {'first_seen': now, 'last_success': None})
+        state['last_check'] = now
+        state['checking'] = False
+        state['last_error'] = '' if ok else error
+        if ok:
+            state['last_success'] = now
+
+
+def refresh_server_health():
+    servers = list_servers()
+    now = time.time()
+    active_ids = {server['id'] for server in servers}
+    with _server_health_lock:
+        for server in servers:
+            state = _server_health.setdefault(server['id'], {'first_seen': now, 'last_success': None})
+            state['checking'] = True
+        for server_id in list(_server_health):
+            if server_id not in active_ids:
+                _server_health.pop(server_id, None)
+
+    if not servers:
+        return
+    with ThreadPoolExecutor(max_workers=min(8, len(servers)), thread_name_prefix='health-probe') as pool:
+        futures = [pool.submit(_probe_server_health, server) for server in servers]
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception:
+                logger.exception('服务器健康探测线程异常')
+
+
+def run_server_health_monitor():
+    logger.info('可视化大屏服务器健康监测线程启动')
+    while True:
+        started = time.time()
+        try:
+            refresh_server_health()
+        except Exception:
+            logger.exception('服务器健康监测周期异常')
+        time.sleep(max(1, SERVER_HEALTH_INTERVAL - (time.time() - started)))
+
+
+def start_server_health_monitor():
+    global _server_health_thread
+    with _server_health_thread_lock:
+        if _server_health_thread and _server_health_thread.is_alive():
+            return _server_health_thread
+        _server_health_thread = threading.Thread(
+            target=run_server_health_monitor, daemon=True, name='server-health-monitor'
+        )
+        _server_health_thread.start()
+        return _server_health_thread
+
+
+@app.route("/api/dashboard/status", methods=["GET"])
+@no_cache
+@login_required
+@role_required(['admin', 'operator'])
+def api_dashboard_status():
+    start_server_health_monitor()
+    servers = list_servers()
+    now = time.time()
+    items = []
+    with _server_health_lock:
+        states = {key: dict(value) for key, value in _server_health.items()}
+    for server in servers:
+        state = states.get(server['id'], {})
+        last_success = state.get('last_success')
+        reference = last_success or state.get('first_seen') or now
+        if last_success and now - last_success <= SERVER_OFFLINE_AFTER:
+            status = 'online'
+        elif now - reference > SERVER_OFFLINE_AFTER:
+            status = 'offline'
+        else:
+            status = 'checking'
+        items.append({
+            'id': server['id'], 'ip': server['ip'], 'port': server['port'],
+            'name': server.get('notes') or server['ip'],
+            'groups': server.get('group_names') or '未分组',
+            'status': status, 'checking': bool(state.get('checking')),
+            'last_success': datetime.fromtimestamp(last_success).strftime('%Y-%m-%d %H:%M:%S') if last_success else None,
+        })
+    counts = {key: sum(1 for item in items if item['status'] == key) for key in ('online', 'offline', 'checking')}
+    return jsonify({'servers': items, 'counts': counts, 'total': len(items),
+                    'updated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'offline_after': SERVER_OFFLINE_AFTER})
+
+
 @app.route("/api/reports", methods=["GET"])
 @no_cache
 @login_required
@@ -1406,6 +1533,7 @@ def main():
         logger.warning("安全配置提示: %s", warning)
     start_queue_workers()
     start_scheduler()
+    start_server_health_monitor()
     
     try:
         socketio.run(

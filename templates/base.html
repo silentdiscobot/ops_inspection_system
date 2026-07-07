@@ -6,9 +6,9 @@
   <meta name="csrf-token" content="{{ csrf_token }}">
   <title>灵兔洞察系统</title>
   <link href="/static/lib/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=10">
+  <link rel="stylesheet" href="/static/styles.css?v=23">
 </head>
-<body>
+<body class="{% if request.path == '/dashboard' %}dashboard-body{% endif %}">
   <nav class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <img src="/static/images/logo.png?v=1" alt="灵兔洞察" class="sidebar-logo">
@@ -19,6 +19,10 @@
       <a href="/" class="menu-item">
         <span class="menu-icon">🏠</span>
         <span class="menu-text">首页</span>
+      </a>
+      <a href="/dashboard" class="menu-item dashboard-menu-item">
+        <span class="menu-icon">◈</span>
+        <span class="menu-text">可视化大屏</span>
       </a>
       <a href="/server_inspect" class="menu-item">
         <span class="menu-icon">🛠️</span>
@@ -71,7 +75,8 @@
   
   <script src="/static/lib/socket.io.min.js"></script>
   <script src="/static/lib/axios.min.js"></script>
-  <script src="/static/app.js?v=5"></script>
+  <script src="/static/app.js?v=6"></script>
+  <script src="/static/app-shell.js?v=2"></script>
   <script>
     function toggleSidebar() {
       document.getElementById('sidebar').classList.toggle('collapsed');
@@ -97,6 +102,6 @@
       }
     }
   </script>
-  {% block scripts %}{% endblock %}
+  <div id="pageScripts" hidden>{% block scripts %}{% endblock %}</div>
 </body>
 </html>
