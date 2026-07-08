@@ -6,7 +6,7 @@
   <meta name="csrf-token" content="{{ csrf_token }}">
   <title>灵兔洞察系统</title>
   <link href="/static/lib/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=23">
+  <link rel="stylesheet" href="/static/styles.css?v=28">
 </head>
 <body class="{% if request.path == '/dashboard' %}dashboard-body{% endif %}">
   <nav class="sidebar" id="sidebar">
@@ -28,14 +28,17 @@
         <span class="menu-icon">🛠️</span>
         <span class="menu-text">服务器巡检</span>
       </a>
-      <a href="/inspect" class="menu-item">
-        <span class="menu-icon">🔍</span>
-        <span class="menu-text">巡检项管理</span>
-      </a>
-      <a href="/servers" class="menu-item">
-        <span class="menu-icon">🖥️</span>
-        <span class="menu-text">服务器管理</span>
-      </a>
+      <div class="menu-dropdown server-menu-dropdown">
+        <a href="#" class="menu-item menu-dropdown-toggle system-menu-item" onclick="toggleDropdown(this, event); return false;">
+          <span class="menu-icon">🖥️</span>
+          <span class="menu-text">服务器管理</span>
+          <span class="menu-arrow" aria-hidden="true"></span>
+        </a>
+        <div class="menu-dropdown-content">
+          <a href="/servers" class="menu-item sub-menu-item"><span class="menu-text">服务器列表</span></a>
+          <a href="/servers-new" class="menu-item sub-menu-item"><span class="menu-text">新增服务器</span></a>
+        </div>
+      </div>
       {% endif %}
       
       <a href="/reports" class="menu-item">
@@ -76,7 +79,7 @@
   <script src="/static/lib/socket.io.min.js"></script>
   <script src="/static/lib/axios.min.js"></script>
   <script src="/static/app.js?v=6"></script>
-  <script src="/static/app-shell.js?v=2"></script>
+  <script src="/static/app-shell.js?v=3"></script>
   <script>
     function toggleSidebar() {
       document.getElementById('sidebar').classList.toggle('collapsed');
@@ -84,21 +87,23 @@
     }
     
     document.addEventListener('DOMContentLoaded', function() {
-      var dropdown = document.querySelector('.menu-dropdown');
-      if (dropdown && localStorage.getItem('menuExpanded') === 'true') {
-        dropdown.classList.add('expanded');
-      }
+      document.querySelectorAll('.menu-dropdown').forEach(function(dropdown, index) {
+        var currentLink = dropdown.querySelector('.menu-dropdown-content a[href="' + location.pathname + '"]');
+        if (currentLink || localStorage.getItem('menuExpanded-' + index) === 'true') dropdown.classList.add('expanded');
+      });
     });
     
     function toggleDropdown(button, event) {
       var dropdown = button.parentElement;
+      var dropdowns = Array.prototype.slice.call(document.querySelectorAll('.menu-dropdown'));
+      var storageKey = 'menuExpanded-' + dropdowns.indexOf(dropdown);
       var isExpanded = dropdown.classList.contains('expanded');
       if (!isExpanded) {
         dropdown.classList.add('expanded');
-        localStorage.setItem('menuExpanded', 'true');
+        localStorage.setItem(storageKey, 'true');
       } else {
         dropdown.classList.remove('expanded');
-        localStorage.setItem('menuExpanded', 'false');
+        localStorage.setItem(storageKey, 'false');
       }
     }
   </script>

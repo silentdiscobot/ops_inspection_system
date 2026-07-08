@@ -1,8 +1,9 @@
 (function () {
   'use strict';
   var cache = new Map();
-  var CACHE_MS = 20000;
+  var CACHE_MS = 120000;
   var navigating = false;
+  var mounted = false;
 
   function eligible(link) {
     if (!link || link.target || link.hasAttribute('download')) return false;
@@ -24,7 +25,8 @@
         if (attr.name !== 'src') script.setAttribute(attr.name, attr.value);
       });
       if (source.src) {
-        script.src = source.src; script.onload = resolve; script.onerror = reject;
+        script.src = source.src; script.onload = resolve;
+        script.onerror = function() { console.warn('页面脚本加载失败，已保留当前页面', source.src); resolve(); };
       } else { script.text = source.textContent; }
       document.getElementById('pageScripts').appendChild(script);
       if (!source.src) resolve();
@@ -49,6 +51,7 @@
     if (extra) scripts = scripts.concat(Array.prototype.slice.call(extra.querySelectorAll('script')));
     scripts.forEach(function(script) { script.remove(); });
     document.dispatchEvent(new CustomEvent('lingtu:before-unmount'));
+    mounted = true;
     document.querySelector('main').innerHTML = incomingMain.innerHTML;
     document.getElementById('pageScripts').innerHTML = '';
     document.body.className = parsed.body.className;
@@ -66,8 +69,12 @@
   function navigate(path, push) {
     if (navigating || (push && path === location.pathname)) return;
     navigating = true;
+    mounted = false;
     fetchPage(path).then(function(html) { return mount(path, html, push); })
-      .catch(function() { location.href = path; })
+      .catch(function(error) {
+        console.warn('局部页面切换失败', error);
+        if (!mounted) location.href = path;
+      })
       .finally(function() { navigating = false; });
   }
   document.addEventListener('click', function(event) {
@@ -82,5 +89,12 @@
     var link = event.target.closest && event.target.closest('.sidebar a[href]');
     if (eligible(link)) fetchPage(new URL(link.href, location.href).pathname).catch(function() {});
   });
+  function prefetchMenus() {
+    document.querySelectorAll('.sidebar a[href]').forEach(function(link) {
+      if (eligible(link)) fetchPage(new URL(link.href, location.href).pathname).catch(function() {});
+    });
+  }
+  if ('requestIdleCallback' in window) requestIdleCallback(prefetchMenus, {timeout: 1500});
+  else setTimeout(prefetchMenus, 300);
   window.addEventListener('popstate', function() { navigate(location.pathname, false); });
 }());

@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var nodes = [], topologyPage = 0, pageSize = 12, pageTimer = null, disposed = false;
+  var nodes = [], topologyPage = 0, pageTimer = null, disposed = false;
   var clockTimer = null, statusTimer = null, animationFrame = null;
   var canvas = document.getElementById('networkCanvas'), ctx = canvas.getContext('2d');
 
@@ -13,29 +13,37 @@
     document.getElementById('wallDate').textContent = now.toLocaleDateString('zh-CN', {year:'numeric', month:'2-digit', day:'2-digit', weekday:'short'});
   }
   function nodePosition(index, total) {
-    var angle = (Math.PI * 2 * index / Math.max(total, 1)) - Math.PI / 2;
-    var radiusX = total > 8 ? 40 : 36, radiusY = total > 8 ? 38 : 32;
-    return {x: 50 + Math.cos(angle) * radiusX, y: 51 + Math.sin(angle) * radiusY};
+    var progress = total > 1 ? index / (total - 1) : 0;
+    var radius = 19 + Math.sqrt(progress) * 25;
+    var angle = index * 2.3999632297 - Math.PI / 2;
+    return {x: 50 + Math.cos(angle) * radius, y: 50 + Math.sin(angle) * radius * .91};
+  }
+  function showNodeDetail(server) {
+    document.getElementById('nodeDetailName').textContent = server.name || server.ip;
+    document.getElementById('nodeDetailAddress').textContent = server.ip + ':' + server.port;
+    document.getElementById('nodeDetailStatus').textContent = server.status === 'online' ? '正常在线' : server.status === 'offline' ? '连接中断' : '探测中';
+    document.getElementById('nodeDetailGroups').textContent = server.groups || '未分组';
+    document.getElementById('nodeDetailPanel').hidden = false;
   }
   function renderTopology() {
     var universe = document.getElementById('serverNodes'); universe.innerHTML = '';
-    var pages = Math.max(1, Math.ceil(nodes.length / pageSize));
-    if (topologyPage >= pages) topologyPage = 0;
-    var visibleNodes = nodes.slice(topologyPage * pageSize, topologyPage * pageSize + pageSize);
+    var visibleNodes = nodes;
     visibleNodes.forEach(function(server, index) {
       var pos = nodePosition(index, visibleNodes.length), node = document.createElement('div');
-      node.className = 'server-node ' + server.status; node.style.left = pos.x + '%'; node.style.top = pos.y + '%';
+      var depth = .72 + (pos.y / 100) * .48;
+      node.className = 'server-node ' + server.status; node.style.left = pos.x + '%'; node.style.top = pos.y + '%'; node.style.setProperty('--node-delay', ((index % 7) * -0.22) + 's'); node.style.setProperty('--node-depth', depth.toFixed(3)); node.style.zIndex = String(Math.round(pos.y) + 3); node.tabIndex = 0;
       node.innerHTML = '<i class="node-halo"></i><span class="server-glyph"><i></i><b></b></span><label><i></i>' + escapeHtml(server.ip) + '</label><small>' + (server.status === 'online' ? 'ONLINE' : server.status === 'offline' ? 'OFFLINE' : 'SCANNING') + '</small>';
+      node.addEventListener('click', function(){ showNodeDetail(server); });
+      node.addEventListener('keydown', function(event){ if (event.key === 'Enter' || event.key === ' ') showNodeDetail(server); });
       universe.appendChild(node);
     });
-    var pager = document.getElementById('topologyPager'); pager.hidden = pages <= 1;
-    document.getElementById('topologyPage').textContent = (topologyPage + 1) + ' / ' + pages;
+    document.getElementById('topologyPager').hidden = true;
   }
   function turnTopology(direction) {
-    var pages = Math.max(1, Math.ceil(nodes.length / pageSize)); topologyPage = (topologyPage + direction + pages) % pages; renderTopology();
+    renderTopology();
   }
   function resetTopologyTimer() {
-    clearInterval(pageTimer); pageTimer = setInterval(function(){ if (nodes.length > pageSize) turnTopology(1); }, 8000);
+    clearInterval(pageTimer);
   }
   function render(data) {
     var count = data.counts || {}, total = data.total || 0, online = count.online || 0, offline = count.offline || 0, checking = count.checking || 0;
@@ -80,6 +88,7 @@
   }
   document.getElementById('topologyPrev').addEventListener('click', function(){ turnTopology(-1); resetTopologyTimer(); });
   document.getElementById('topologyNext').addEventListener('click', function(){ turnTopology(1); resetTopologyTimer(); });
+  document.getElementById('nodeDetailClose').addEventListener('click', function(){ document.getElementById('nodeDetailPanel').hidden = true; });
   document.getElementById('fullscreenBtn').addEventListener('click', toggleFullscreen);
   document.addEventListener('fullscreenchange', syncFullscreenButton);
   document.addEventListener('lingtu:before-unmount', function cleanupDashboard() {

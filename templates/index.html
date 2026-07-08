@@ -8,18 +8,17 @@
 <div class="hero-section">
   <h1>欢迎您！{{ current_user.display_name or current_user.username }}</h1>
   <p class="lead">{{ ["一万年太久，只争朝夕！", "星星之火，可以燎原！", "从群众中来，到群众中去！", "虚心使人进步，骄傲使人落后！", "不管风吹浪打，胜似闲庭信步！"] | random }}</p>
-  <a href="/inspect" class="btn btn-primary btn-lg" >
-    开始巡检
+  <a href="/dashboard" class="btn btn-primary btn-lg">
+    全景感知
   </a>
 </div>
 
 <div class="feature-grid">
-  <a href="/dashboard" class="feature-card-link feature-card-wide">
-    <div class="feature-card visual-screen-card">
+  <a href="/dashboard" class="feature-card-link">
+    <div class="feature-card">
       <div class="feature-icon">◈</div>
       <div class="feature-title">可视化大屏</div>
       <div class="feature-desc">全景感知服务器在线状态，异常节点一目了然</div>
-      <span class="feature-enter">进入态势中心 →</span>
     </div>
   </a>
   <a href="/servers" class="feature-card-link">

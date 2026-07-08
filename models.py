@@ -11,7 +11,12 @@ CREATE TABLE IF NOT EXISTS server_groups (
 );
 CREATE TABLE IF NOT EXISTS servers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL DEFAULT '',
     ip TEXT NOT NULL,
+    resource_type TEXT NOT NULL DEFAULT '虚拟机',
+    physical_ip TEXT,
+    os_type TEXT NOT NULL DEFAULT 'Centos',
+    rack_number TEXT,
     port INTEGER NOT NULL DEFAULT 22,
     username TEXT NOT NULL,
     enc_password TEXT NOT NULL,
@@ -115,6 +120,15 @@ def init_db():
         cur.execute("ALTER TABLE servers ADD COLUMN enc_private_key TEXT")
     if 'enc_key_passphrase' not in server_columns:
         cur.execute("ALTER TABLE servers ADD COLUMN enc_key_passphrase TEXT")
+    for column, definition in {
+        'name': "TEXT NOT NULL DEFAULT ''",
+        'resource_type': "TEXT NOT NULL DEFAULT '虚拟机'",
+        'physical_ip': "TEXT",
+        'os_type': "TEXT NOT NULL DEFAULT 'Centos'",
+        'rack_number': "TEXT",
+    }.items():
+        if column not in server_columns:
+            cur.execute(f"ALTER TABLE servers ADD COLUMN {column} {definition}")
     cur.execute("PRAGMA journal_mode=WAL")
     conn.commit()
     conn.close()
@@ -191,17 +205,21 @@ def list_servers(group_id: Optional[int] = None):
 def add_server(ip: str, port: int, username: str, enc_password: str,
                group_ids: Optional[List[int]] = None, notes: str="",
                auth_type: str = "password", enc_private_key: str = None,
-               enc_key_passphrase: str = None):
+               enc_key_passphrase: str = None, name: str = "",
+               resource_type: str = "虚拟机", physical_ip: str = "",
+               os_type: str = "Centos", rack_number: str = ""):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
         INSERT INTO servers(
             ip, port, username, enc_password, auth_type,
-            enc_private_key, enc_key_passphrase, notes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            enc_private_key, enc_key_passphrase, notes, name, resource_type,
+            physical_ip, os_type, rack_number
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         ip, port, username, enc_password, auth_type,
-        enc_private_key, enc_key_passphrase, notes
+        enc_private_key, enc_key_passphrase, notes, name, resource_type,
+        physical_ip, os_type, rack_number
     ))
     server_id = cur.lastrowid
     
@@ -234,16 +252,21 @@ def get_server(server_id: int):
 def update_server(server_id: int, ip: str, port: int, username: str,
                   enc_password: str, group_ids: Optional[List[int]] = None,
                   notes: str = "", auth_type: str = "password",
-                  enc_private_key: str = None, enc_key_passphrase: str = None):
+                  enc_private_key: str = None, enc_key_passphrase: str = None,
+                  name: str = "", resource_type: str = "虚拟机",
+                  physical_ip: str = "", os_type: str = "Centos",
+                  rack_number: str = ""):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
         UPDATE servers SET ip=?, port=?, username=?, enc_password=?, auth_type=?,
-                           enc_private_key=?, enc_key_passphrase=?, notes=?
+                           enc_private_key=?, enc_key_passphrase=?, notes=?, name=?,
+                           resource_type=?, physical_ip=?, os_type=?, rack_number=?
         WHERE id=?
     """, (
         ip, port, username, enc_password, auth_type,
-        enc_private_key, enc_key_passphrase, notes, server_id
+        enc_private_key, enc_key_passphrase, notes, name, resource_type,
+        physical_ip, os_type, rack_number, server_id
     ))
     if cur.rowcount == 0:
         conn.close()

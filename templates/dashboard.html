@@ -33,6 +33,11 @@
       <div class="topology-pager" id="topologyPager" hidden><button type="button" id="topologyPrev" aria-label="上一组节点">‹</button><span id="topologyPage">1 / 1</span><button type="button" id="topologyNext" aria-label="下一组节点">›</button></div>
       <div class="core-orb"><div class="orb-shell"><span class="core-logo"><i></i><b></b></span><em>LINGTU CORE</em></div><i class="orbit orbit-one"></i><i class="orbit orbit-two"></i></div>
       <div class="server-nodes" id="serverNodes"></div>
+      <div class="node-detail-panel" id="nodeDetailPanel" hidden>
+        <button type="button" id="nodeDetailClose" aria-label="关闭">×</button>
+        <span>SERVER DETAIL</span><h3 id="nodeDetailName"></h3>
+        <dl><dt>地址</dt><dd id="nodeDetailAddress"></dd><dt>状态</dt><dd id="nodeDetailStatus"></dd><dt>所属分组</dt><dd id="nodeDetailGroups"></dd></dl>
+      </div>
       <div class="floor-grid" aria-hidden="true"></div>
       <div class="empty-universe" id="emptyUniverse" hidden><span>◇</span><strong>暂无服务器节点</strong><small>请先在服务器管理中添加资产</small></div>
     </main>
@@ -47,4 +52,4 @@
   <footer class="wall-footer"><span><i class="live-pulse"></i> LIVE MONITORING</span><span id="lastUpdated">等待首次同步</span><span>SSH HEALTH PROBE / AES SECURED</span></footer>
 </div>
 {% endblock %}
-{% block scripts %}<script src="/static/dashboard.js?v=2"></script>{% endblock %}
+{% block scripts %}<script src="/static/dashboard.js?v=4"></script>{% endblock %}

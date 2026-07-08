@@ -1,11 +1,13 @@
 {% extends "base.html" %}
+{% set page_mode = page_mode|default('list') %}
 {% block content %}
 <div class="page-header">
-  <h1 class="page-title">服务器管理界面</h1>
-  <p class="page-subtitle">管理服务器资产与分组配置</p>
+  <h1 class="page-title">{{ '服务器列表' if page_mode == 'list' else '新增服务器' }}</h1>
+  <p class="page-subtitle">{{ '集中查看、筛选和维护服务器资产' if page_mode == 'list' else '管理服务器分组并录入新的服务器资产' }}</p>
 </div>
 
 <div class="row server-management-row">
+  {% if page_mode == 'new' %}
   <!-- 左侧：分组管理 -->
   <div class="col-lg-3 group-section">
     <div class="card group-card">
@@ -40,9 +42,11 @@
       </div>
     </div>
   </div>
+  {% endif %}
   
   <!-- 右侧：服务器管理 -->
-  <div class="col-lg-9 server-section">
+  <div class="{{ 'col-lg-9' if page_mode == 'new' else 'col-lg-12' }} server-section">
+    {% if page_mode == 'new' %}
     <!-- 新增服务器卡片 -->
     <div class="card server-card">
       <div class="card-header">
@@ -52,6 +56,11 @@
       
       <div class="card-body">
         <div class="form-grid">
+          <div class="form-group"><label class="form-label">名称</label><input type="text" id="serverName" class="form-control" placeholder="例如：生产应用服务器01"></div>
+          <div class="form-group"><label class="form-label">资源类型</label><select id="resourceType" class="form-select"><option>云实例</option><option selected>虚拟机</option><option>物理机</option></select></div>
+          <div class="form-group"><label class="form-label">物理机IP</label><input type="text" id="physicalIp" class="form-control" placeholder="虚拟机所属宿主机IP（可选）"></div>
+          <div class="form-group"><label class="form-label">系统类型</label><select id="osType" class="form-select"><option>Centos</option><option>Ubuntu</option><option>Kylin V10</option><option>Windows</option></select></div>
+          <div class="form-group"><label class="form-label">机柜编号</label><input type="text" id="rackNumber" class="form-control" placeholder="例如：A01-U12（可选）"></div>
           <div class="form-group">
             <label class="form-label">IP地址</label>
             <input type="text" id="ip" class="form-control" placeholder="192.168.1.100">
@@ -126,19 +135,39 @@
         </div>
       </div>
     </div>
+
+    <div class="card recent-server-card" id="recentServerCard" hidden>
+      <div class="card-header">
+        <div class="card-icon">✓</div>
+        <h3 class="card-title">刚刚新增的服务器</h3>
+      </div>
+      <div class="card-body">
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead><tr><th>名称</th><th>IP地址</th><th>资源类型</th><th>系统类型</th><th>所属分组</th><th>备注</th></tr></thead>
+            <tbody><tr><td id="recentName"></td><td id="recentIp"></td><td id="recentResourceType"></td><td id="recentOsType"></td><td id="recentGroups"></td><td id="recentNotes"></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
     
+    {% endif %}
+    {% if page_mode == 'list' %}
     <!-- 服务器列表卡片 -->
     <div class="card list-card">
       <div class="card-header">
         <div class="card-icon">📋</div>
         <h3 class="card-title">服务器列表</h3>
-        <div class="filter-container">
-          <select id="filterGroup" class="form-select" onchange="loadServers()">
-            <option value="">全部分组</option>
-            {% for g in groups %}
-            <option value="{{g.id}}">{{g.name}}</option>
-            {% endfor %}
-          </select>
+        <div class="list-header-actions">
+          <a href="/servers-new" class="btn btn-primary">新增服务器</a>
+          <div class="filter-container">
+            <select id="filterGroup" class="form-select" onchange="loadServers()">
+              <option value="">全部分组</option>
+              {% for g in groups %}
+              <option value="{{g.id}}">{{g.name}}</option>
+              {% endfor %}
+            </select>
+          </div>
         </div>
       </div>
       
@@ -147,11 +176,12 @@
           <table class="data-table">
             <thead>
               <tr>
+                <th>名称</th>
                 <th>IP地址</th>
-                <th>端口</th>
-                <th>用户名</th>
-                <th>认证方式</th>
+                <th>资源类型</th>
+                <th>物理机IP</th>
                 <th>所属分组</th>
+                <th>系统类型</th>
                 <th>备注</th>
                 <th>操作</th>
               </tr>
@@ -159,10 +189,10 @@
             <tbody id="serverTbody">
               {% for s in servers %}
               <tr>
+                <td>{{s.name or '-'}}</td>
                 <td class="ip-cell">{{s.ip}}</td>
-                <td>{{s.port}}</td>
-                <td>{{s.username}}</td>
-                <td>{% if s.auth_type == 'key' %}SSH密钥{% else %}密码{% endif %}</td>
+                <td>{{s.resource_type or '-'}}</td>
+                <td>{{s.physical_ip or '-'}}</td>
                 <td class="groups-cell">
                   {% if s.group_names and s.group_names != '无' %}
                     {% for group_name in s.group_names.split(', ') %}
@@ -172,8 +202,10 @@
                     <span class="empty-text">-</span>
                   {% endif %}
                 </td>
+                <td>{{s.os_type or '-'}}</td>
                 <td class="notes-cell">{{s.notes or '-'}}</td>
                 <td>
+                  <button class="btn btn-sm btn-secondary" onclick="viewServer({{s.id}})">查看</button>
                   <button class="btn btn-sm btn-primary" onclick="openEditServer({{s.id}})">编辑</button>
                   <button class="btn btn-sm btn-danger" onclick="deleteServer({{s.id}})">删除</button>
                 </td>
@@ -192,15 +224,22 @@
         </div>
       </div>
     </div>
+    {% endif %}
   </div>
 </div>
 
+{% if page_mode == 'list' %}
 <div id="editServerOverlay" class="modal-overlay" style="display:none;">
   <div class="modal-content server-edit-modal">
     <div class="modal-header"><h3>编辑服务器</h3><button type="button" class="modal-close" onclick="closeEditServer()">×</button></div>
     <div class="modal-body">
       <input type="hidden" id="editServerId">
       <div class="form-grid">
+        <div class="form-group"><label class="form-label">名称</label><input id="editServerName" class="form-control"></div>
+        <div class="form-group"><label class="form-label">资源类型</label><select id="editResourceType" class="form-select"><option>云实例</option><option>虚拟机</option><option>物理机</option></select></div>
+        <div class="form-group"><label class="form-label">物理机IP</label><input id="editPhysicalIp" class="form-control"></div>
+        <div class="form-group"><label class="form-label">系统类型</label><select id="editOsType" class="form-select"><option>Centos</option><option>Ubuntu</option><option>Kylin V10</option><option>Windows</option></select></div>
+        <div class="form-group"><label class="form-label">机柜编号</label><input id="editRackNumber" class="form-control"></div>
         <div class="form-group"><label class="form-label">IP地址</label><input id="editIp" class="form-control"></div>
         <div class="form-group"><label class="form-label">端口</label><input id="editPort" class="form-control"></div>
         <div class="form-group"><label class="form-label">用户名</label><input id="editUsername" class="form-control"></div>
@@ -217,6 +256,14 @@
     <div class="modal-footer"><button type="button" id="editTestServerBtn" class="btn btn-secondary" onclick="testEditServerConnection()">测试连接</button><span class="modal-footer-spacer"></span><button type="button" class="btn btn-secondary" onclick="closeEditServer()">取消</button><button type="button" class="btn btn-primary" onclick="saveEditServer()">保存修改</button></div>
   </div>
 </div>
+<div id="viewServerOverlay" class="modal-overlay" style="display:none;">
+  <div class="modal-content server-edit-modal">
+    <div class="modal-header"><h3>服务器完整信息</h3><button type="button" class="modal-close" onclick="closeViewServer()">×</button></div>
+    <div class="modal-body"><div id="serverDetailLoading" class="empty-state">正在连接服务器并采集硬件信息…</div><div id="serverDetailGrid" class="server-detail-grid" hidden></div></div>
+    <div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="closeViewServer()">关闭</button></div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -281,6 +328,11 @@ async function deleteGroup(groupId) {
 }
 
 function addServer() {
+  var name = document.getElementById('serverName').value.trim();
+  var resourceType = document.getElementById('resourceType').value;
+  var physicalIp = document.getElementById('physicalIp').value.trim();
+  var osType = document.getElementById('osType').value;
+  var rackNumber = document.getElementById('rackNumber').value.trim();
   var ip = document.getElementById('ip').value.trim();
   var port = document.getElementById('port').value.trim();
   var username = document.getElementById('username').value.trim();
@@ -290,6 +342,7 @@ function addServer() {
   var keyPassphrase = document.getElementById('keyPassphrase').value;
   var notes = document.getElementById('notes').value.trim();
   
+  if (!name) { alert('请输入服务器名称'); return; }
   if (!ip) {
     alert('请输入IP地址');
     return;
@@ -312,9 +365,11 @@ function addServer() {
   }
   
   var selectedGroups = [];
+  var selectedGroupNames = [];
   var checkboxes = document.querySelectorAll('input[name="serverGroups"]:checked');
   for (var i = 0; i < checkboxes.length; i++) {
     selectedGroups.push(parseInt(checkboxes[i].value));
+    selectedGroupNames.push(checkboxes[i].parentElement.textContent.trim());
   }
   
   fetch('/api/servers', {
@@ -324,6 +379,11 @@ function addServer() {
       'X-CSRFToken': getCookie('csrf_token')
     },
     body: JSON.stringify({
+      name: name,
+      resource_type: resourceType,
+      physical_ip: physicalIp,
+      os_type: osType,
+      rack_number: rackNumber,
       ip: ip,
       port: parseInt(port),
       username: username,
@@ -340,6 +400,16 @@ function addServer() {
   .then(function(data) {
     if (data.ok) {
       alert('服务器添加成功');
+      document.getElementById('recentName').textContent = name;
+      document.getElementById('serverName').value = '';
+      document.getElementById('physicalIp').value = '';
+      document.getElementById('rackNumber').value = '';
+      document.getElementById('recentIp').textContent = ip;
+      document.getElementById('recentResourceType').textContent = resourceType;
+      document.getElementById('recentOsType').textContent = osType;
+      document.getElementById('recentGroups').textContent = selectedGroupNames.join('、') || '-';
+      document.getElementById('recentNotes').textContent = notes || '-';
+      document.getElementById('recentServerCard').hidden = false;
       document.getElementById('ip').value = '';
       document.getElementById('port').value = '22';
       document.getElementById('username').value = '';
@@ -353,7 +423,6 @@ function addServer() {
       for (var j = 0; j < cbs.length; j++) {
         cbs[j].checked = false;
       }
-      location.reload();
     } else {
       alert('添加失败: ' + (data.msg || '未知错误'));
     }
@@ -366,6 +435,11 @@ function addServer() {
 
 function currentAddServerPayload() {
   return {
+    name: document.getElementById('serverName').value.trim(),
+    resource_type: document.getElementById('resourceType').value,
+    physical_ip: document.getElementById('physicalIp').value.trim(),
+    os_type: document.getElementById('osType').value,
+    rack_number: document.getElementById('rackNumber').value.trim(),
     ip: document.getElementById('ip').value.trim(),
     port: parseInt(document.getElementById('port').value, 10),
     username: document.getElementById('username').value.trim(),
@@ -409,6 +483,11 @@ async function openEditServer(serverId) {
     var server = servers.find(function(item) { return item.id === serverId; });
     if (!server) { alert('服务器不存在或已被删除'); return; }
     document.getElementById('editServerId').value = server.id;
+    document.getElementById('editServerName').value = server.name || '';
+    document.getElementById('editResourceType').value = server.resource_type || '虚拟机';
+    document.getElementById('editPhysicalIp').value = server.physical_ip || '';
+    document.getElementById('editOsType').value = server.os_type || 'Centos';
+    document.getElementById('editRackNumber').value = server.rack_number || '';
     document.getElementById('editIp').value = server.ip;
     document.getElementById('editPort').value = server.port;
     document.getElementById('editUsername').value = server.username;
@@ -439,6 +518,11 @@ function toggleEditAuthFields() {
 function currentEditServerPayload() {
   return {
     id: parseInt(document.getElementById('editServerId').value, 10),
+    name: document.getElementById('editServerName').value.trim(),
+    resource_type: document.getElementById('editResourceType').value,
+    physical_ip: document.getElementById('editPhysicalIp').value.trim(),
+    os_type: document.getElementById('editOsType').value,
+    rack_number: document.getElementById('editRackNumber').value.trim(),
     ip: document.getElementById('editIp').value.trim(),
     port: parseInt(document.getElementById('editPort').value, 10),
     username: document.getElementById('editUsername').value.trim(),
@@ -518,6 +602,35 @@ async function deleteServer(serverId) {
   });
 }
 
+function escapeServerHtml(value) {
+  var div = document.createElement('div'); div.textContent = value == null ? '' : value; return div.innerHTML;
+}
+
+async function viewServer(serverId) {
+  var overlay = document.getElementById('viewServerOverlay');
+  var loading = document.getElementById('serverDetailLoading');
+  var grid = document.getElementById('serverDetailGrid');
+  overlay.style.display = 'flex'; loading.hidden = false; loading.textContent = '正在连接服务器并采集硬件信息…'; grid.hidden = true;
+  try {
+    var response = await fetch('/api/servers/' + serverId + '/details', {credentials: 'include'});
+    var data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.msg || '详情加载失败');
+    var s = data.server, h = data.hardware;
+    var items = [
+      ['名称', s.name || '-'], ['IP地址', s.ip], ['端口', s.port], ['用户名', s.username],
+      ['资源类型', s.resource_type || '-'], ['物理机IP', s.physical_ip || '-'], ['所属分组', s.group_names],
+      ['系统类型', s.os_type || '-'], ['机柜编号', s.rack_number || '-'], ['认证方式', s.auth_type === 'key' ? 'SSH密钥' : '密码'],
+      ['CPU', h.cpu], ['内存', h.memory], ['存储总空间', h.storage], ['GPU', h.gpu], ['备注', s.notes || '-']
+    ];
+    grid.innerHTML = items.map(function(item){ return '<div><span>' + escapeServerHtml(item[0]) + '</span><strong>' + escapeServerHtml(item[1]) + '</strong></div>'; }).join('');
+    if (h.error) grid.innerHTML += '<div class="detail-error"><span>采集提示</span><strong>' + escapeServerHtml(h.error) + '</strong></div>';
+    loading.hidden = true; grid.hidden = false;
+  } catch (error) {
+    loading.textContent = error.message || '详情加载失败';
+  }
+}
+function closeViewServer() { document.getElementById('viewServerOverlay').style.display = 'none'; }
+
 function loadServers() {
   var groupId = document.getElementById('filterGroup').value;
   var url = '/api/servers';
@@ -539,17 +652,19 @@ function loadServers() {
     for (var i = 0; i < data.length; i++) {
       var server = data[i];
       var groupTags = server.group_names && server.group_names !== '无' 
-        ? server.group_names.split(', ').map(function(name) { return '<span class="group-tag">' + name + '</span>'; }).join('')
+        ? server.group_names.split(', ').map(function(name) { return '<span class="group-tag">' + escapeServerHtml(name) + '</span>'; }).join('')
         : '<span class="empty-text">-</span>';
       
       tbody.innerHTML += '<tr>' +
-        '<td class="ip-cell">' + server.ip + '</td>' +
-        '<td>' + server.port + '</td>' +
-        '<td>' + server.username + '</td>' +
-        '<td>' + (server.auth_type === 'key' ? 'SSH密钥' : '密码') + '</td>' +
+        '<td>' + escapeServerHtml(server.name || '-') + '</td>' +
+        '<td class="ip-cell">' + escapeServerHtml(server.ip) + '</td>' +
+        '<td>' + escapeServerHtml(server.resource_type || '-') + '</td>' +
+        '<td>' + escapeServerHtml(server.physical_ip || '-') + '</td>' +
         '<td class="groups-cell">' + groupTags + '</td>' +
-        '<td class="notes-cell">' + (server.notes || '-') + '</td>' +
+        '<td>' + escapeServerHtml(server.os_type || '-') + '</td>' +
+        '<td class="notes-cell">' + escapeServerHtml(server.notes || '-') + '</td>' +
         '<td>' +
+        '<button class="btn btn-sm btn-secondary" onclick="viewServer(' + server.id + ')">查看</button> ' +
         '<button class="btn btn-sm btn-primary" onclick="openEditServer(' + server.id + ')">编辑</button> ' +
         '<button class="btn btn-sm btn-danger" onclick="deleteServer(' + server.id + ')">删除</button>' +
         '</td>' +

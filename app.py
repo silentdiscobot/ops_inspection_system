@@ -9,7 +9,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from config import HOST, PORT, DEBUG, SECRET_KEY, CPU_THRESHOLD, MEM_THRESHOLD, DISK_THRESHOLD, load_aes_key, DEFAULT_ADMIN_PASSWORD, REPORT_DIR, security_config_warnings, QUEUE_WORKERS, QUEUE_RETRY_DELAY
 from models import init_db, list_groups, add_group, delete_group, list_servers, add_server, get_server, update_server, delete_server, add_inspection_task, list_inspection_tasks, get_inspection_task, update_inspection_task, delete_inspection_task, toggle_task_schedule, update_task_last_run, migrate_inspection_tasks_schema, add_user, get_user, list_users, delete_user, update_user, create_inspection_run, claim_next_inspection_run, recover_interrupted_inspection_runs, update_inspection_run_progress, finish_inspection_run, retry_or_fail_inspection_run, get_inspection_run, list_inspection_runs, clear_inspection_results, add_inspection_result
 from crypto_utils import aes_gcm_encrypt, aes_gcm_decrypt
-from inspection import inspect_server, parse_private_key, test_proxy, create_ssh_client, connect_ssh
+from inspection import inspect_server, parse_private_key, test_proxy, create_ssh_client, connect_ssh, run_cmd
 from report_excel import generate_excel_report
 from captcha_utils import generate_captcha, generate_captcha_image
 
@@ -518,7 +518,15 @@ def server_inspect_page():
 def servers_page():
     groups = list_groups()
     servers = list_servers()
-    return render_template("servers.html", groups=groups, servers=servers)
+    return render_template("servers.html", groups=groups, servers=servers, page_mode="list")
+
+@app.route("/servers-new")
+@no_cache
+@login_required
+@role_required(['admin', 'operator'])
+def new_server_page():
+    groups = list_groups()
+    return render_template("servers.html", groups=groups, servers=[], page_mode="new")
 
 @app.route("/dashboard")
 @no_cache
@@ -557,7 +565,12 @@ def api_groups():
         return jsonify({"ok": True})
 
 def validate_server_payload(data, require_credentials=True):
+    name = str(data.get("name", "")).strip()
     ip = str(data.get("ip", "")).strip()
+    resource_type = str(data.get("resource_type", "虚拟机")).strip()
+    physical_ip = str(data.get("physical_ip", "")).strip()
+    os_type = str(data.get("os_type", "Centos")).strip()
+    rack_number = str(data.get("rack_number", "")).strip()
     try:
         port = int(data.get("port", 22))
     except (TypeError, ValueError):
@@ -569,6 +582,16 @@ def validate_server_payload(data, require_credentials=True):
     key_passphrase = data.get("key_passphrase", "") or ""
     notes = str(data.get("notes", ""))
     group_ids = data.get("group_ids", []) or []
+    if not name or not is_safe_display_text(name, 100):
+        raise ValueError("服务器名称不能为空或包含非法字符")
+    if resource_type not in ("云实例", "虚拟机", "物理机"):
+        raise ValueError("资源类型无效")
+    if physical_ip and not is_valid_host(physical_ip):
+        raise ValueError("物理机IP格式无效")
+    if os_type not in ("Centos", "Ubuntu", "Kylin V10", "Windows"):
+        raise ValueError("系统类型无效")
+    if not is_safe_display_text(rack_number, 100):
+        raise ValueError("机柜编号包含非法字符")
     if not is_valid_host(ip):
         raise ValueError("IP地址或主机名格式无效")
     if not 1 <= port <= 65535:
@@ -592,7 +615,9 @@ def validate_server_payload(data, require_credentials=True):
     except (TypeError, ValueError):
         raise ValueError("服务器分组格式无效")
     return {
-        "ip": ip, "port": port, "username": username, "auth_type": auth_type,
+        "name": name, "ip": ip, "resource_type": resource_type,
+        "physical_ip": physical_ip, "os_type": os_type, "rack_number": rack_number,
+        "port": port, "username": username, "auth_type": auth_type,
         "password": password, "private_key": private_key,
         "key_passphrase": key_passphrase, "notes": notes, "group_ids": group_ids,
     }
@@ -671,7 +696,9 @@ def api_servers():
         add_server(
             values["ip"], values["port"], values["username"], enc_password,
             values["group_ids"], values["notes"], auth_type=values["auth_type"], enc_private_key=enc_private_key,
-            enc_key_passphrase=enc_key_passphrase,
+            enc_key_passphrase=enc_key_passphrase, name=values["name"],
+            resource_type=values["resource_type"], physical_ip=values["physical_ip"],
+            os_type=values["os_type"], rack_number=values["rack_number"],
         )
         return jsonify({"ok": True})
     elif request.method == "PUT":
@@ -707,13 +734,89 @@ def api_servers():
         update_server(
             server_id, values["ip"], values["port"], values["username"], enc_password,
             values["group_ids"], values["notes"], values["auth_type"],
-            enc_private_key, enc_key_passphrase,
+            enc_private_key, enc_key_passphrase, values["name"], values["resource_type"],
+            values["physical_ip"], values["os_type"], values["rack_number"],
         )
         return jsonify({"ok": True})
     elif request.method == "DELETE":
         sid = int(request.args.get("id"))
         delete_server(sid)
         return jsonify({"ok": True})
+
+def _format_memory_capacity(raw_value, bytes_input=False):
+    """将系统可见内存归一化为内存条标称容量，如 60.55 GiB -> 64 GB。"""
+    try:
+        value = float(str(raw_value).strip().splitlines()[0])
+        gib = value / (1024 ** 3) if bytes_input else value / (1024 ** 2)
+        standard = 1
+        while standard < gib and standard < 4096:
+            standard *= 2
+        return f"{standard} GB"
+    except (TypeError, ValueError, IndexError):
+        return "未知"
+
+
+def _format_storage_capacity(raw_values):
+    """按物理磁盘厂商十进制容量归一化后求和。"""
+    common_sizes = (64, 80, 120, 128, 160, 240, 250, 256, 320, 480, 500, 512,
+                    750, 960, 1000, 1024, 1920, 2000, 2048, 3840, 4000, 4096,
+                    7680, 8000, 10000, 12000, 16000, 18000, 20000, 22000, 24000)
+    try:
+        sizes = [float(line.strip()) / 1_000_000_000 for line in str(raw_values).splitlines() if line.strip()]
+        if not sizes:
+            return "未知"
+        normalized = []
+        for size in sizes:
+            nearest = min(common_sizes, key=lambda candidate: abs(candidate - size))
+            normalized.append(nearest if abs(nearest - size) / max(size, 1) <= 0.08 else round(size))
+        total_gb = sum(normalized)
+        if total_gb >= 1000:
+            value = total_gb / 1000
+            return f"{value:.2f}".rstrip('0').rstrip('.') + " TB"
+        return f"{int(total_gb)} GB"
+    except (TypeError, ValueError):
+        return "未知"
+
+
+@app.route("/api/servers/<int:server_id>/details", methods=["GET"])
+@no_cache
+@login_required
+@role_required(['admin', 'operator'])
+def api_server_details(server_id):
+    raw_server = get_server(server_id)
+    if not raw_server:
+        return jsonify({"ok": False, "msg": "服务器不存在"}), 404
+    group_map = {item['id']: item['name'] for item in list_groups()}
+    server = {key: value for key, value in raw_server.items() if key not in ('enc_password', 'enc_private_key', 'enc_key_passphrase')}
+    server['group_names'] = '、'.join(group_map.get(group_id, '') for group_id in server.get('group_ids', []) if group_map.get(group_id)) or '未分组'
+    hardware = {'cpu': '未知', 'memory': '未知', 'storage': '未知', 'gpu': '未知'}
+    ssh = create_ssh_client()
+    try:
+        credentials = decrypt_server_credentials(load_aes_key(), raw_server)
+        connect_ssh(ssh, raw_server['ip'], raw_server['port'], raw_server['username'],
+                    password=credentials.get('password'), private_key=credentials.get('private_key'),
+                    key_passphrase=credentials.get('key_passphrase'), timeout=10)
+        if raw_server.get('os_type') == 'Windows':
+            hardware['cpu'] = (run_cmd(ssh, 'powershell -NoProfile -Command "(Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors"') or '未知') + ' 核'
+            memory_bytes = run_cmd(ssh, 'powershell -NoProfile -Command "(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory"')
+            disk_bytes = run_cmd(ssh, 'powershell -NoProfile -Command "Get-CimInstance Win32_DiskDrive | ForEach-Object {$_.Size}"')
+            hardware['memory'] = _format_memory_capacity(memory_bytes, bytes_input=True)
+            hardware['storage'] = _format_storage_capacity(disk_bytes)
+            hardware['gpu'] = run_cmd(ssh, 'powershell -NoProfile -Command "(Get-CimInstance Win32_VideoController).Name -join \'; \'"') or '未检测到'
+        else:
+            hardware['cpu'] = (run_cmd(ssh, "c=$(lscpu -p=CPU 2>/dev/null | grep -vc '^#'); if [ \"$c\" -gt 0 ]; then echo $c; else getconf _NPROCESSORS_CONF; fi") or '未知') + ' 核'
+            memory_kb = run_cmd(ssh, "dmidecode -t memory 2>/dev/null | awk '/^[[:space:]]*Size: [0-9]+ (MB|GB)/{if($3==\"GB\")s+=$2*1048576;else s+=$2*1024} END{if(s>0)print s}'")
+            if not memory_kb:
+                memory_kb = run_cmd(ssh, "awk '/MemTotal/{print $2}' /proc/meminfo")
+            disk_bytes = run_cmd(ssh, "lsblk -bdno SIZE,TYPE 2>/dev/null | awk '$2==\"disk\"{print $1}'")
+            hardware['memory'] = _format_memory_capacity(memory_kb)
+            hardware['storage'] = _format_storage_capacity(disk_bytes)
+            hardware['gpu'] = run_cmd(ssh, "nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || lspci 2>/dev/null | grep -Ei 'VGA|3D' | cut -d: -f3-") or '未检测到'
+    except Exception as exc:
+        hardware = {'cpu': '采集失败', 'memory': '采集失败', 'storage': '采集失败', 'gpu': '采集失败', 'error': str(exc)[:200]}
+    finally:
+        ssh.close()
+    return jsonify({'ok': True, 'server': server, 'hardware': hardware})
 
 # ------------- Reports -------------
 def _probe_server_health(server):
@@ -815,7 +918,7 @@ def api_dashboard_status():
             status = 'checking'
         items.append({
             'id': server['id'], 'ip': server['ip'], 'port': server['port'],
-            'name': server.get('notes') or server['ip'],
+            'name': server.get('name') or server['ip'],
             'groups': server.get('group_names') or '未分组',
             'status': status, 'checking': bool(state.get('checking')),
             'last_success': datetime.fromtimestamp(last_success).strftime('%Y-%m-%d %H:%M:%S') if last_success else None,
