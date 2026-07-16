@@ -51,8 +51,19 @@ _login_failures = {}
 _login_failures_lock = threading.Lock()
 
 # 可视化大屏服务器在线状态（仅保存在内存中，不暴露认证信息）
-SERVER_HEALTH_INTERVAL = 5 * 60
-SERVER_OFFLINE_AFTER = 120
+def _read_positive_int_env(name, default):
+    try:
+        return max(1, int(os.environ.get(name, default)))
+    except (TypeError, ValueError):
+        logger.warning("%s 配置无效，使用默认值 %s", name, default)
+        return default
+
+
+SERVER_HEALTH_INTERVAL = _read_positive_int_env("OPS_SERVER_HEALTH_INTERVAL", 5 * 60)
+SERVER_OFFLINE_AFTER = max(
+    _read_positive_int_env("OPS_SERVER_OFFLINE_AFTER", SERVER_HEALTH_INTERVAL * 2),
+    SERVER_HEALTH_INTERVAL + 30,
+)
 _server_health = {}
 _server_health_lock = threading.Lock()
 _server_health_thread = None
@@ -583,6 +594,7 @@ def dashboard_page():
         "dashboard.html",
         server_health_interval=SERVER_HEALTH_INTERVAL,
         server_offline_after=SERVER_OFFLINE_AFTER,
+        server_offline_minutes=max(1, round(SERVER_OFFLINE_AFTER / 60)),
     )
 
 @app.route("/reports")
