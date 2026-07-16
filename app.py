@@ -5,6 +5,7 @@ from datetime import datetime
 from functools import wraps
 from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, make_response
 from flask_socketio import SocketIO
+from werkzeug.serving import WSGIRequestHandler
 from werkzeug.security import check_password_hash, generate_password_hash
 from config import HOST, PORT, DEBUG, SECRET_KEY, CPU_THRESHOLD, MEM_THRESHOLD, DISK_THRESHOLD, load_aes_key, DEFAULT_ADMIN_PASSWORD, REPORT_DIR, security_config_warnings, QUEUE_WORKERS, QUEUE_RETRY_DELAY
 from models import init_db, list_groups, add_group, delete_group, list_servers, add_server, get_server, update_server, delete_server, add_inspection_task, list_inspection_tasks, get_inspection_task, update_inspection_task, delete_inspection_task, toggle_task_schedule, update_task_last_run, migrate_inspection_tasks_schema, add_user, get_user, list_users, delete_user, update_user, create_inspection_run, claim_next_inspection_run, recover_interrupted_inspection_runs, update_inspection_run_progress, finish_inspection_run, retry_or_fail_inspection_run, get_inspection_run, list_inspection_runs, clear_inspection_results, add_inspection_result
@@ -36,14 +37,22 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 SESSION_IDLE_SECONDS = 2 * 60 * 60
 socketio = SocketIO(app, async_mode="threading")
 
+
+class VersionlessWSGIRequestHandler(WSGIRequestHandler):
+    server_version = os.environ.get("OPS_SERVER_BANNER", "ops-inspection")
+    sys_version = ""
+
+    def version_string(self):
+        return self.server_version
+
 LOGIN_MAX_FAILURES = 5
 LOGIN_FAILURE_WINDOW = 15 * 60
 _login_failures = {}
 _login_failures_lock = threading.Lock()
 
 # 可视化大屏服务器在线状态（仅保存在内存中，不暴露认证信息）
-SERVER_HEALTH_INTERVAL = 20
-SERVER_OFFLINE_AFTER = 60
+SERVER_HEALTH_INTERVAL = 5 * 60
+SERVER_OFFLINE_AFTER = 120
 _server_health = {}
 _server_health_lock = threading.Lock()
 _server_health_thread = None
@@ -227,6 +236,7 @@ def enforce_request_security():
 
 @app.after_request
 def add_security_headers(response):
+    response.headers.pop('Server', None)
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
@@ -511,6 +521,41 @@ def server_inspect_page():
         run['report_filename'] = os.path.basename(run['report_path']) if run.get('report_path') else None
     return render_template("server_inspect.html", tasks=tasks, groups=groups, runs=runs)
 
+def sanitize_servers_for_client(servers):
+    sanitized = []
+    for server in servers:
+        item = dict(server)
+        item.pop('enc_password', None)
+        item.pop('enc_private_key', None)
+        item.pop('enc_key_passphrase', None)
+        sanitized.append(item)
+    return sanitized
+
+def filter_servers_by_keyword(servers, keyword):
+    keyword = (keyword or "").strip().lower()
+    if not keyword:
+        return servers
+
+    def text(value):
+        return str(value or "").strip().lower()
+
+    filtered = []
+    for server in servers:
+        searchable = " ".join([
+            text(server.get("name")),
+            text(server.get("ip")),
+            text(server.get("physical_ip")),
+            text(server.get("resource_type")),
+            text(server.get("os_type")),
+            text(server.get("group_names")),
+            text(server.get("rack_number")),
+            text(server.get("username")),
+            text(server.get("notes")),
+        ])
+        if keyword in searchable:
+            filtered.append(server)
+    return filtered
+
 @app.route("/servers")
 @no_cache
 @login_required
@@ -534,7 +579,11 @@ def new_server_page():
 @role_required(['admin', 'operator'])
 def dashboard_page():
     start_server_health_monitor()
-    return render_template("dashboard.html")
+    return render_template(
+        "dashboard.html",
+        server_health_interval=SERVER_HEALTH_INTERVAL,
+        server_offline_after=SERVER_OFFLINE_AFTER,
+    )
 
 @app.route("/reports")
 @no_cache
@@ -674,13 +723,16 @@ def api_test_server_connection():
 def api_servers():
     if request.method == "GET":
         gid = request.args.get("group_id")
-        gid = int(gid) if gid else None
-        servers = list_servers(gid)
-        for server in servers:
-            server.pop('enc_password', None)
-            server.pop('enc_private_key', None)
-            server.pop('enc_key_passphrase', None)
-        return jsonify(servers)
+        try:
+            gid = int(gid) if gid else None
+        except ValueError:
+            return jsonify({"ok": False, "msg": "分组ID无效"}), 400
+        keyword = (request.args.get("keyword") or "").strip()
+        resource_type = (request.args.get("resource_type") or "").strip()
+        os_type = (request.args.get("os_type") or "").strip()
+        servers = list_servers(gid, "", resource_type, os_type)
+        servers = filter_servers_by_keyword(servers, keyword)
+        return jsonify(sanitize_servers_for_client(servers))
     elif request.method == "POST":
         try:
             values = validate_server_payload(request.json or {}, require_credentials=True)
@@ -1641,12 +1693,14 @@ def main():
     try:
         socketio.run(
             app, host=HOST, port=PORT, debug=DEBUG,
-            allow_unsafe_werkzeug=True, use_reloader=False
+            allow_unsafe_werkzeug=True, use_reloader=False,
+            request_handler=VersionlessWSGIRequestHandler
         )
     except TypeError as e:
         # Python 3.14与Werkzeug兼容性问题回退
         logger.warning(f"SocketIO启动失败，尝试直接使用Flask: {e}")
-        app.run(host=HOST, port=PORT, debug=DEBUG, threaded=True)
+        app.run(host=HOST, port=PORT, debug=DEBUG, threaded=True,
+                request_handler=VersionlessWSGIRequestHandler)
 
 if __name__ == "__main__":
     main()

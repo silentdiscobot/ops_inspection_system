@@ -159,14 +159,35 @@ def delete_group(group_id: int):
     conn.commit()
     conn.close()
 
-def list_servers(group_id: Optional[int] = None):
+def list_servers(group_id: Optional[int] = None, keyword: str = "",
+                 resource_type: str = "", os_type: str = ""):
     conn = get_conn()
     conn.row_factory = row_to_dict
     cur = conn.cursor()
     
+    filters = []
+    params = []
+    if keyword:
+        filters.append("(s.name LIKE ? OR s.ip LIKE ? OR s.physical_ip LIKE ? OR s.notes LIKE ?)")
+        pattern = f"%{keyword}%"
+        params.extend([pattern, pattern, pattern, pattern])
+    if resource_type:
+        filters.append("s.resource_type = ?")
+        params.append(resource_type)
+    if os_type:
+        filters.append("s.os_type = ?")
+        params.append(os_type)
+
     if group_id is None:
         # 获取所有服务器及其分组信息
-        cur.execute("SELECT * FROM servers ORDER BY ip")
+        where_sql = (" WHERE " + " AND ".join(filters)) if filters else ""
+        cur.execute("SELECT s.* FROM servers s" + where_sql + """
+            ORDER BY
+              CASE WHEN s.resource_type = '虚拟机' AND COALESCE(s.physical_ip, '') <> ''
+                   THEN s.physical_ip ELSE s.ip END,
+              CASE s.resource_type WHEN '物理机' THEN 0 WHEN '虚拟机' THEN 1 ELSE 2 END,
+              s.ip
+        """, params)
         servers = cur.fetchall()
         
         # 为每个服务器获取所属分组
@@ -182,12 +203,18 @@ def list_servers(group_id: Optional[int] = None):
         return servers
     else:
         # 获取指定分组的服务器
+        filters.insert(0, "m.group_id = ?")
+        params.insert(0, group_id)
         cur.execute("""
             SELECT s.* FROM servers s
             INNER JOIN server_group_memberships m ON s.id = m.server_id
-            WHERE m.group_id = ?
-            ORDER BY s.ip
-        """, (group_id,))
+            WHERE """ + " AND ".join(filters) + """
+            ORDER BY
+              CASE WHEN s.resource_type = '虚拟机' AND COALESCE(s.physical_ip, '') <> ''
+                   THEN s.physical_ip ELSE s.ip END,
+              CASE s.resource_type WHEN '物理机' THEN 0 WHEN '虚拟机' THEN 1 ELSE 2 END,
+              s.ip
+        """, params)
         servers = cur.fetchall()
         
         # 为每个服务器获取所属分组

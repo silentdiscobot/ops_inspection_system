@@ -199,6 +199,23 @@ class SecurityTests(unittest.TestCase):
             self.assertNotIn("enc_private_key", server)
             self.assertNotIn("enc_key_passphrase", server)
 
+    def test_wsgi_server_banner_does_not_expose_runtime_versions(self):
+        handler = app.VersionlessWSGIRequestHandler
+        self.assertNotIn("Werkzeug", handler.server_version)
+        self.assertNotIn("Python", handler.sys_version)
+        self.assertEqual(handler.version_string(handler), handler.server_version)
+
+    def test_server_health_monitor_timing_policy(self):
+        self.assertEqual(app.SERVER_HEALTH_INTERVAL, 5 * 60)
+        self.assertEqual(app.SERVER_OFFLINE_AFTER, 120)
+
+    def test_dashboard_page_renders_health_timing_policy(self):
+        response = self.client.get("/dashboard")
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn("自动探测周期 5 分钟", html)
+        self.assertIn("连续 120 秒未成功即判定掉线", html)
+
     @patch("app.add_server")
     def test_server_api_accepts_encrypted_ssh_key(self, add_server):
         key = paramiko.RSAKey.generate(1024)

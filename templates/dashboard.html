@@ -25,7 +25,7 @@
       <div class="panel-heading"><span>STATUS OVERVIEW</span><h2>运行概览</h2></div>
       <div class="status-ring" id="statusRing"><div><strong id="ringRate">0</strong><small>% 在线</small></div></div>
       <div class="legend"><span><i class="dot-online"></i>正常 <b id="legendOnline">0</b></span><span><i class="dot-offline"></i>掉线 <b id="legendOffline">0</b></span><span><i class="dot-checking"></i>探测中 <b id="legendChecking">0</b></span></div>
-      <div class="scan-note"><i></i><span>自动探测周期 20 秒<br>连续 60 秒未成功即判定掉线</span></div>
+      <div class="scan-note"><i></i><span>自动探测周期 {{ server_health_interval // 60 }} 分钟<br>连续 {{ server_offline_after }} 秒未成功即判定掉线</span></div>
     </aside>
 
     <main class="server-universe">

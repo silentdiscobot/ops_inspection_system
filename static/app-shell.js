@@ -11,6 +11,12 @@
     return url.origin === location.origin && !url.search && !url.hash && url.pathname !== '/profile';
   }
   function fetchPage(path) {
+    if (path === '/servers' || path === '/servers-new' || path === '/dashboard') {
+      return fetch(path, {credentials:'same-origin', headers:{'X-Lingtu-Shell':'1'}}).then(function(response) {
+        if (!response.ok || new URL(response.url).pathname !== path) throw new Error('full navigation required');
+        return response.text();
+      });
+    }
     var saved = cache.get(path);
     if (saved && Date.now() - saved.time < CACHE_MS) return Promise.resolve(saved.html);
     return fetch(path, {credentials:'same-origin', headers:{'X-Lingtu-Shell':'1'}}).then(function(response) {

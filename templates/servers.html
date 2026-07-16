@@ -160,26 +160,40 @@
         <h3 class="card-title">服务器列表</h3>
         <div class="list-header-actions">
           <a href="/servers-new" class="btn btn-primary">新增服务器</a>
-          <div class="filter-container">
-            <select id="filterGroup" class="form-select" onchange="loadServers()">
-              <option value="">全部分组</option>
-              {% for g in groups %}
-              <option value="{{g.id}}">{{g.name}}</option>
-              {% endfor %}
-            </select>
-          </div>
         </div>
       </div>
-      
+
       <div class="card-body">
+        <div class="server-filter-bar">
+          <div class="server-filter-fields">
+            <span class="filter-title">筛选</span>
+            <label class="filter-control"><span>所属分组</span><select id="filterGroup" class="form-select" onchange="applyServerFilters()">
+                <option value="">全部分组</option>
+                {% for g in groups %}
+                <option value="{{g.id}}">{{g.name}}</option>
+                {% endfor %}
+            </select></label>
+            <label class="filter-control"><span>资源类型</span><select id="filterResourceType" class="form-select" onchange="applyServerFilters()">
+              <option value="">全部资源类型</option><option value="云实例">云实例</option><option value="虚拟机">虚拟机</option><option value="物理机">物理机</option>
+            </select></label>
+            <label class="filter-control"><span>系统类型</span><select id="filterOsType" class="form-select" onchange="applyServerFilters()">
+              <option value="">全部系统类型</option><option value="Centos">Centos</option><option value="Ubuntu">Ubuntu</option><option value="Kylin V10">Kylin V10</option><option value="Windows">Windows</option>
+            </select></label>
+            <button type="button" class="btn btn-secondary" onclick="resetServerFilters()">重置</button>
+          </div>
+          <div class="server-search-group">
+            <input id="serverKeyword" class="form-control server-search" type="search" placeholder="搜索名称、IP、物理机IP或备注" onkeydown="if(event.key === 'Enter') submitServerSearch()">
+            <button type="button" class="btn btn-primary server-search-btn" onclick="submitServerSearch()">搜索</button>
+          </div>
+        </div>
         <div class="table-wrapper">
           <table class="data-table">
             <thead>
               <tr>
                 <th>名称</th>
                 <th>IP地址</th>
-                <th>资源类型</th>
                 <th>物理机IP</th>
+                <th>资源类型</th>
                 <th>所属分组</th>
                 <th>系统类型</th>
                 <th>备注</th>
@@ -191,8 +205,8 @@
               <tr>
                 <td>{{s.name or '-'}}</td>
                 <td class="ip-cell">{{s.ip}}</td>
-                <td>{{s.resource_type or '-'}}</td>
                 <td>{{s.physical_ip or '-'}}</td>
+                <td>{{s.resource_type or '-'}}</td>
                 <td class="groups-cell">
                   {% if s.group_names and s.group_names != '无' %}
                     {% for group_name in s.group_names.split(', ') %}
@@ -205,7 +219,7 @@
                 <td>{{s.os_type or '-'}}</td>
                 <td class="notes-cell">{{s.notes or '-'}}</td>
                 <td>
-                  <button class="btn btn-sm btn-secondary" onclick="viewServer({{s.id}})">查看</button>
+                  <button class="btn btn-sm btn-view" onclick="viewServer({{s.id}})">查看</button>
                   <button class="btn btn-sm btn-primary" onclick="openEditServer({{s.id}})">编辑</button>
                   <button class="btn btn-sm btn-danger" onclick="deleteServer({{s.id}})">删除</button>
                 </td>
@@ -213,7 +227,7 @@
               {% endfor %}
               {% if not servers %}
               <tr>
-                <td colspan="7" class="empty-row">
+                <td colspan="8" class="empty-row">
                   <span class="empty-icon">📭</span>
                   <span>暂无服务器</span>
                 </td>
@@ -631,50 +645,138 @@ async function viewServer(serverId) {
 }
 function closeViewServer() { document.getElementById('viewServerOverlay').style.display = 'none'; }
 
-function loadServers() {
-  var groupId = document.getElementById('filterGroup').value;
-  var url = '/api/servers';
-  if (groupId) {
-    url += '?group_id=' + groupId;
-  }
-  
-  fetch(url, { credentials: 'include' })
-  .then(function(response) { return response.json(); })
-  .then(function(data) {
+var serverFilterRequestId = 0;
+
+function submitServerSearch() {
+  applyServerFilters();
+}
+
+function applyServerFilters() {
     var tbody = document.getElementById('serverTbody');
+    var groupFilter = document.getElementById('filterGroup');
+    var resourceFilter = document.getElementById('filterResourceType');
+    var osFilter = document.getElementById('filterOsType');
+    var keywordInput = document.getElementById('serverKeyword');
+    if (!tbody || !groupFilter || !resourceFilter || !osFilter || !keywordInput) return;
+
+    var params = new URLSearchParams();
+    if (groupFilter.value) params.set('group_id', groupFilter.value);
+    if (resourceFilter.value) params.set('resource_type', resourceFilter.value);
+    if (osFilter.value) params.set('os_type', osFilter.value);
+    if (keywordInput.value.trim()) params.set('keyword', keywordInput.value.trim());
+    var requestId = ++serverFilterRequestId;
+    var url = '/api/servers' + (params.toString() ? '?' + params.toString() : '');
+    fetch(url, {credentials: 'include'})
+      .then(function(response) {
+        return response.json().then(function(data) {
+          if (!response.ok) throw new Error(data.msg || '筛选请求失败');
+          return data;
+        });
+      })
+      .then(function(data) {
+        if (requestId !== serverFilterRequestId) return;
+        if (!Array.isArray(data)) throw new Error('服务器列表数据格式异常');
+        renderServerRows(data);
+      })
+      .catch(function(error) {
+        if (requestId !== serverFilterRequestId) return;
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-row"><span>加载失败：' + escapeServerHtml(error.message) + '</span></td></tr>';
+      });
+}
+
+function renderServerRows(data) {
+    var tbody = document.getElementById('serverTbody');
+    if (!tbody) return;
     tbody.innerHTML = '';
     
     if (data.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" class="empty-row"><span class="empty-icon">📭</span><span>暂无服务器</span></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-row"><span class="empty-icon">📭</span><span>没有符合条件的服务器</span></td></tr>';
       return;
     }
     
+    var rowsHtml = [];
     for (var i = 0; i < data.length; i++) {
       var server = data[i];
       var groupTags = server.group_names && server.group_names !== '无' 
         ? server.group_names.split(', ').map(function(name) { return '<span class="group-tag">' + escapeServerHtml(name) + '</span>'; }).join('')
         : '<span class="empty-text">-</span>';
-      
-      tbody.innerHTML += '<tr>' +
+
+      rowsHtml.push('<tr>' +
         '<td>' + escapeServerHtml(server.name || '-') + '</td>' +
         '<td class="ip-cell">' + escapeServerHtml(server.ip) + '</td>' +
-        '<td>' + escapeServerHtml(server.resource_type || '-') + '</td>' +
         '<td>' + escapeServerHtml(server.physical_ip || '-') + '</td>' +
+        '<td>' + escapeServerHtml(server.resource_type || '-') + '</td>' +
         '<td class="groups-cell">' + groupTags + '</td>' +
         '<td>' + escapeServerHtml(server.os_type || '-') + '</td>' +
         '<td class="notes-cell">' + escapeServerHtml(server.notes || '-') + '</td>' +
         '<td>' +
-        '<button class="btn btn-sm btn-secondary" onclick="viewServer(' + server.id + ')">查看</button> ' +
+        '<button class="btn btn-sm btn-view" onclick="viewServer(' + server.id + ')">查看</button> ' +
         '<button class="btn btn-sm btn-primary" onclick="openEditServer(' + server.id + ')">编辑</button> ' +
         '<button class="btn btn-sm btn-danger" onclick="deleteServer(' + server.id + ')">删除</button>' +
         '</td>' +
-        '</tr>';
+        '</tr>');
     }
-  })
-  .catch(function(error) {
-    console.error('加载服务器列表失败:', error);
-  });
+    tbody.innerHTML = rowsHtml.join('');
 }
+
+function initServerListFilters() {
+  var tbody = document.getElementById('serverTbody');
+  var keywordInput = document.getElementById('serverKeyword');
+  var groupFilter = document.getElementById('filterGroup');
+  var resourceFilter = document.getElementById('filterResourceType');
+  var osFilter = document.getElementById('filterOsType');
+  var searchButton = document.querySelector('.server-search-btn');
+  var resetButton = document.querySelector('.server-filter-fields .btn-secondary');
+  if (!tbody) return;
+  if (keywordInput && keywordInput.dataset.filterBound !== '1') {
+    keywordInput.addEventListener('input', applyServerFilters);
+    keywordInput.addEventListener('keydown', function(event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        applyServerFilters();
+      }
+    });
+    keywordInput.dataset.filterBound = '1';
+  }
+  [groupFilter, resourceFilter, osFilter].forEach(function(select) {
+    if (select && select.dataset.filterBound !== '1') {
+      select.addEventListener('change', applyServerFilters);
+      select.dataset.filterBound = '1';
+    }
+  });
+  if (searchButton && searchButton.dataset.filterBound !== '1') {
+    searchButton.addEventListener('click', applyServerFilters);
+    searchButton.dataset.filterBound = '1';
+  }
+  if (resetButton && resetButton.dataset.filterBound !== '1') {
+    resetButton.addEventListener('click', resetServerFilters);
+    resetButton.dataset.filterBound = '1';
+  }
+  applyServerFilters();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initServerListFilters);
+} else {
+  initServerListFilters();
+}
+
+function resetServerFilters() {
+  var keywordInput = document.getElementById('serverKeyword');
+  var groupFilter = document.getElementById('filterGroup');
+  var resourceFilter = document.getElementById('filterResourceType');
+  var osFilter = document.getElementById('filterOsType');
+  if (!keywordInput || !groupFilter || !resourceFilter || !osFilter) return;
+  keywordInput.value = '';
+  groupFilter.value = '';
+  resourceFilter.value = '';
+  osFilter.value = '';
+  applyServerFilters();
+}
+
+window.applyServerFilters = applyServerFilters;
+window.submitServerSearch = submitServerSearch;
+window.resetServerFilters = resetServerFilters;
 
 function toggleAuthFields() {
   var isKey = document.getElementById('authType').value === 'key';
