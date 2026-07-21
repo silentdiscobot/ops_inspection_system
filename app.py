@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-import os, logging, sqlite3, threading, time, hashlib, hmac, re, secrets, json
+import os, logging, sqlite3, threading, time, hashlib, hmac, re, secrets, json, gzip, shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from functools import wraps
+from logging.handlers import TimedRotatingFileHandler
 from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, make_response
 from flask_socketio import SocketIO
 from werkzeug.serving import WSGIRequestHandler
@@ -17,11 +18,44 @@ from captcha_utils import generate_captcha, generate_captcha_image
 # ---------------- Logging ----------------
 from config import LOG_DIR
 os.makedirs(LOG_DIR, exist_ok=True)
+
+LOG_FILE = os.path.join(LOG_DIR, "app.log")
+
+
+def _gzip_rotated_log(source, dest):
+    with open(source, "rb") as src, gzip.open(dest, "wb") as gz:
+        shutil.copyfileobj(src, gz)
+    os.remove(source)
+
+
+def _gzip_log_name(default_name):
+    return default_name + ".gz"
+
+
+def _compress_existing_rotated_logs():
+    prefix = "app.log."
+    for filename in os.listdir(LOG_DIR):
+        if not filename.startswith(prefix) or filename.endswith(".gz"):
+            continue
+        source = os.path.join(LOG_DIR, filename)
+        dest = source + ".gz"
+        if os.path.isfile(source) and not os.path.exists(dest):
+            _gzip_rotated_log(source, dest)
+
+
+_compress_existing_rotated_logs()
+file_handler = TimedRotatingFileHandler(
+    LOG_FILE, when="midnight", interval=1, backupCount=30, encoding="utf-8"
+)
+file_handler.suffix = "%Y-%m-%d"
+file_handler.namer = _gzip_log_name
+file_handler.rotator = _gzip_rotated_log
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
-        logging.FileHandler(os.path.join(LOG_DIR, "app.log"), encoding="utf-8"),
+        file_handler,
         logging.StreamHandler()
     ]
 )
@@ -1328,6 +1362,20 @@ def update_progress(run_id, message, percent, report_path=None):
     # 保存进度到文件，防止服务器重启丢失
     save_progress(inspection_progress)
 
+def emit_progress(run_id, message=None, percent=0, report_path=None, visible=True):
+    """更新进度；常规单机探测只更新百分比，不写入日志框。"""
+    previous = inspection_progress.get(run_id) or {}
+    stored_message = message if visible and message else previous.get("message", "")
+    update_progress(run_id, stored_message, percent, report_path)
+
+    payload = {"run_id": run_id, "percent": percent}
+    if visible and message:
+        payload["message"] = message
+    if report_path:
+        payload["report_path"] = report_path
+    socketio.emit("progress", payload)
+
+
 def get_servers_by_group_param(group_param):
     """根据分组参数获取服务器列表"""
     if group_param == "" or group_param is None:
@@ -1377,21 +1425,13 @@ def run_inspection(run_id: str, project_name: str, inspector: str, report_format
             servers = get_servers_by_group_param(rule.get('group_id'))
             total_steps += len(servers)
     
-    # 初始化进度
-    update_progress(run_id, "开始资源巡检...", 0)
-    
+    emit_progress(run_id, "开始探测...", 0)
     current_step = 0
     
     # 服务器资源巡检
     for idx, s in enumerate(resource_servers, start=1):
         try:
-            msg = f"连接 {s['ip']}... ({idx}/{resource_total})"
-            update_progress(run_id, msg, int(current_step/max(total_steps,1)*100))
-            socketio.emit("progress", {
-                "run_id": run_id,
-                "message": msg,
-                "percent": int(current_step/max(total_steps,1)*100)
-            })
+            emit_progress(run_id, percent=int(current_step/max(total_steps,1)*100), visible=False)
             
             credentials = decrypt_server_credentials(key, s)
             res = inspect_server(
@@ -1406,45 +1446,24 @@ def run_inspection(run_id: str, project_name: str, inspector: str, report_format
             
             current_step += 1
             
-            # 根据选择的巡检项显示结果
-            result_parts = []
-            if check_cpu:
-                result_parts.append(f"CPU:{res['cpu']}%")
-            if check_mem:
-                result_parts.append(f"MEM:{res['mem']}%")
-            if check_disk:
-                result_parts.append(f"DISK:{res['disk']}%")
-            
-            msg = f"完成 {s['ip']}  {', '.join(result_parts)}"
-            update_progress(run_id, msg, int(current_step/max(total_steps,1)*100))
-            socketio.emit("progress", {
-                "run_id": run_id,
-                "message": msg,
-                "percent": int(current_step/max(total_steps,1)*100)
-            })
+            if res.get("ok"):
+                emit_progress(run_id, percent=int(current_step/max(total_steps,1)*100), visible=False)
+            else:
+                msg = f"探测不到 {s['ip']}: {res.get('error') or '未知错误'}"
+                emit_progress(run_id, msg, int(current_step/max(total_steps,1)*100))
         except Exception as e:
             failed_result = {"ip": s["ip"], "ok": False, "error": str(e), "uptime":"", "cpu":0, "mem":0, "disk":0}
             rows.append(failed_result)
             add_inspection_result(run_id, failed_result)
             current_step += 1
             
-            msg = f"失败 {s['ip']}: {e}"
-            update_progress(run_id, msg, int(current_step/max(total_steps,1)*100))
-            socketio.emit("progress", {
-                "run_id": run_id,
-                "message": msg,
-                "percent": int(current_step/max(total_steps,1)*100)
-            })
+            msg = f"探测不到 {s['ip']}: {e}"
+            emit_progress(run_id, msg, int(current_step/max(total_steps,1)*100))
         time.sleep(0.2)
 
     # 网关代理检测 - 支持多条规则
     if do_proxy_test:
-        update_progress(run_id, "开始网关代理检测...", int(current_step/max(total_steps,1)*100))
-        socketio.emit("progress", {
-            "run_id": run_id,
-            "message": "开始网关代理检测...",
-            "percent": int(current_step/max(total_steps,1)*100)
-        })
+        emit_progress(run_id, "开始网关代理检测...", int(current_step/max(total_steps,1)*100))
         
         rule_index = 0
         for rule in proxy_rules:
@@ -1458,13 +1477,7 @@ def run_inspection(run_id: str, project_name: str, inspector: str, report_format
             
             for idx, s in enumerate(proxy_servers, start=1):
                 try:
-                    msg = f"检测代理 [{rule_index}] {s['ip']}... ({idx}/{proxy_total})"
-                    update_progress(run_id, msg, int(current_step/max(total_steps,1)*100))
-                    socketio.emit("progress", {
-                        "run_id": run_id,
-                        "message": msg,
-                        "percent": int(current_step/max(total_steps,1)*100)
-                    })
+                    emit_progress(run_id, percent=int(current_step/max(total_steps,1)*100), visible=False)
                     
                     credentials = decrypt_server_credentials(key, s)
                     res = test_proxy(
@@ -1475,25 +1488,18 @@ def run_inspection(run_id: str, project_name: str, inspector: str, report_format
                     proxy_results.append(res)
                     
                     current_step += 1
-                    status = "正常" if res["success"] else ("连接失败" if res["error"] else "异常")
-                    msg = f"代理检测 [{rule_index}] {s['ip']}: {status}"
-                    update_progress(run_id, msg, int(current_step/max(total_steps,1)*100))
-                    socketio.emit("progress", {
-                        "run_id": run_id,
-                        "message": msg,
-                        "percent": int(current_step/max(total_steps,1)*100)
-                    })
+                    if res["success"]:
+                        emit_progress(run_id, percent=int(current_step/max(total_steps,1)*100), visible=False)
+                    else:
+                        detail = res.get("error") or "未匹配到成功关键字"
+                        msg = f"代理探测不到 [{rule_index}] {s['ip']}: {detail}"
+                        emit_progress(run_id, msg, int(current_step/max(total_steps,1)*100))
                 except Exception as e:
                     proxy_results.append({"ip": s["ip"], "success": False, "output": "", "error": str(e)})
                     current_step += 1
                     
-                    msg = f"代理检测失败 [{rule_index}] {s['ip']}: {e}"
-                    update_progress(run_id, msg, int(current_step/max(total_steps,1)*100))
-                    socketio.emit("progress", {
-                        "run_id": run_id,
-                        "message": msg,
-                        "percent": int(current_step/max(total_steps,1)*100)
-                    })
+                    msg = f"代理探测不到 [{rule_index}] {s['ip']}: {e}"
+                    emit_progress(run_id, msg, int(current_step/max(total_steps,1)*100))
                 time.sleep(0.2)
 
     # 根据格式生成报告
@@ -1507,14 +1513,8 @@ def run_inspection(run_id: str, project_name: str, inspector: str, report_format
         else:
             report_path = generate_excel_report(project_name, inspector, date_str, rows, proxy_results, check_cpu, check_mem, check_disk, task_name)
         
-        msg = f"报告已生成: {os.path.basename(report_path)}"
-        update_progress(run_id, msg, 100, report_path)
-        socketio.emit("progress", {
-            "run_id": run_id,
-            "message": msg,
-            "percent": 100,
-            "report_path": report_path
-        })
+        msg = f"探测结束，报告已生成: {os.path.basename(report_path)}"
+        emit_progress(run_id, msg, 100, report_path)
         return {"success": True, "report_path": report_path, "error": ""}
     except ImportError as e:
         msg = f"PDF报告生成失败: 需要安装 reportlab 库"
