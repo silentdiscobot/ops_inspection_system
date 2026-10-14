@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header ai-page-header">
+  <h1 class="page-title"><img src="/static/images/logo-robot.png" alt="" class="ai-logo-icon" aria-hidden="true"> 用量统计</h1>
+  <p class="page-subtitle">查看 AI 智能运维近 30 天的调用次数与 token 用量。</p>
+</div>
+
+{% if not ai_config.enabled %}
+<div class="card">
+  <div class="card-header">
+    <div class="card-icon">🚫</div>
+    <h3 class="card-title">功能已关闭</h3>
+  </div>
+  <div class="card-body">
+    <p class="ai-disabled-text">管理员已通过 <code>OPS_AI_ENABLED=0</code> 关闭 AI 智能运维。</p>
+  </div>
+</div>
+{% else %}
+<div class="card ai-page-card">
+  <div class="card-header">
+    <div class="card-icon">📈</div>
+    <h3 class="card-title">Token 用量</h3>
+  </div>
+  <div class="card-body" id="aiUsageBody">
+    <div class="loading">加载中...</div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.AI_PAGE_CONFIG = {
+    enabled: {{ 'true' if ai_config.enabled else 'false' }},
+    page: '{{ ai_config.page }}',
+    role: '{{ ai_config.role }}',
+    traditionalFallback: {{ 'true' if ai_config.traditional_fallback else 'false' }},
+    maskIp: {{ 'true' if ai_config.mask_ip else 'false' }},
+    allowCloud: {{ 'true' if ai_config.allow_cloud else 'false' }},
+    maxInputChars: {{ ai_config.max_input_chars }},
+    actionTtl: {{ ai_config.action_ttl }},
+    dailyTokenLimit: {{ ai_config.daily_token_limit }}
+  };
+</script>
+<script src="/static/ai-markdown.js?v=1"></script>
+<script src="/static/ai.js?v=5"></script>
+{% endblock %}

@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header ai-page-header">
+  <h1 class="page-title"><img src="/static/images/logo-robot.png" alt="" class="ai-logo-icon" aria-hidden="true"> AI智能运维</h1>
+  <p class="page-subtitle">
+    用一句话发起排障与巡检；需要确认时，对应会话会显示醒目提示
+  </p>
+</div>
+
+{% if not ai_config.enabled %}
+<div class="card">
+  <div class="card-header">
+    <div class="card-icon">🚫</div>
+    <h3 class="card-title">功能已关闭</h3>
+  </div>
+  <div class="card-body">
+    <p class="ai-disabled-text">
+      管理员已通过 <code>OPS_AI_ENABLED=0</code> 关闭 AI 智能运维，页面与接口均不可用。
+      如需启用，请去掉该环境变量（默认开启）后重启服务。
+    </p>
+  </div>
+</div>
+{% else %}
+
+<div class="ai-workspace" id="aiWorkspace">
+  <aside class="card ai-side-card" id="aiSideCard">
+    <div class="card-header">
+      <div class="card-icon">💬</div>
+      <h3 class="card-title">会话</h3>
+      <div class="list-header-actions">
+        <button type="button" class="btn btn-primary btn-sm" id="aiNewConversation">新建</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="ai-conversation-list" id="aiConversationList">
+        <div class="loading">加载中...</div>
+      </div>
+
+      <div class="ai-side-actions">
+        <button type="button" class="btn btn-outline btn-sm" id="aiOpenSkills">技能 Skills</button>
+        <button type="button" class="btn btn-outline btn-sm" id="aiOpenTools">能力清单</button>
+      </div>
+
+      <div class="ai-side-foot">API Key 加密入库、只进不出，接口只回显掩码。</div>
+    </div>
+  </aside>
+
+  <section class="card ai-chat-card">
+    <div class="card-header">
+      <button type="button" class="btn btn-secondary btn-sm ai-side-toggle" id="aiSideToggle"
+        aria-expanded="false">会话</button>
+      <div class="card-icon">✨</div>
+      <h3 class="card-title" id="aiChatTitle">AI 运维助手</h3>
+      <label class="ai-model-pick">
+        <span class="ai-model-pick-label" id="aiModelPickLabel">模型</span>
+        <select id="aiProviderSelect" class="form-select" aria-labelledby="aiModelPickLabel"></select>
+      </label>
+      <div class="list-header-actions ai-chat-actions">
+        <span class="ai-status" id="aiChatStatus"></span>
+        <button type="button" class="btn btn-secondary btn-sm" id="aiRenameConversation">重命名</button>
+        <button type="button" class="btn btn-danger btn-sm" id="aiDeleteConversation">删除</button>
+      </div>
+    </div>
+    <div class="card-body ai-chat-body">
+      <div class="ai-model-note" id="aiProviderNote" hidden></div>
+
+      <div class="ai-messages" id="aiMessages">
+        <div class="loading">加载中...</div>
+      </div>
+
+      <div class="ai-composer">
+        <textarea id="aiInput" class="form-control" rows="2"
+          placeholder="例如：最近一次巡检有哪些异常？10.0.0.11 的磁盘还剩多少空间？"></textarea>
+        <div class="ai-composer-actions">
+          <span class="ai-composer-hint" id="aiComposerHint"></span>
+          <button type="button" class="btn btn-outline btn-sm" id="aiCancel" hidden>停止生成</button>
+          <label class="ai-access-pick">
+            <span class="ai-access-pick-label" id="aiAccessPickLabel">访问</span>
+            <select id="aiAccessMode" class="form-select" aria-labelledby="aiAccessPickLabel">
+              <option value="limited">限制访问</option>
+              <option value="change" selected>变更访问</option>
+              <option value="full">完全访问</option>
+            </select>
+          </label>
+          <button type="button" class="btn btn-primary" id="aiSend">发送</button>
+        </div>
+        <div class="ai-composer-tip">
+          Enter 发送 · Shift+Enter 换行 ·
+          最多 {{ ai_config.max_input_chars }} 字
+          · 远程命令由本轮访问模式控制
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Skills 管理 -->
+<div id="aiSkillsOverlay" class="modal-overlay" style="display:none;">
+  <div class="modal-content ai-wide-modal">
+    <div class="modal-header">
+      <h3>技能 Skills</h3>
+      <button type="button" class="modal-close" id="aiSkillsClose">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="ai-skills-layout">
+        <section class="ai-skills-list-panel">
+          <div class="ai-skills-head">
+            <div>
+              <div class="ai-skills-title">已安装 Skills</div>
+              <div class="ai-skills-root" id="aiSkillsRoot"></div>
+            </div>
+            <button type="button" class="btn btn-outline btn-sm" id="aiSkillsRefresh">刷新</button>
+          </div>
+          <div class="ai-skills-list" id="aiSkillsList"></div>
+        </section>
+
+        <section class="ai-skills-detail-panel">
+          <div class="ai-skills-detail" id="aiSkillDetail"></div>
+
+          {% if current_user.role == 'admin' %}
+          <form class="ai-skill-form" id="aiSkillForm">
+            <h4 class="ai-tools-group-title">添加 Skill</h4>
+            <div class="ai-form-grid">
+              <label class="ai-form-item">
+                <span class="form-label">名称</span>
+                <input class="form-control" id="aiSkillName" placeholder="ops_helper">
+              </label>
+              <label class="ai-form-item">
+                <span class="form-label">用途说明</span>
+                <input class="form-control" id="aiSkillDescription" placeholder="用于规范某类运维操作">
+              </label>
+              <label class="ai-form-item ai-form-wide">
+                <span class="form-label">说明内容</span>
+                <textarea class="form-control" id="aiSkillInstructions" rows="8"
+                  placeholder="写给 AI 的具体使用规则、流程、边界与注意事项"></textarea>
+              </label>
+              <label class="ai-check ai-form-wide">
+                <input type="checkbox" id="aiSkillOverwrite"> 覆盖同名 Skill
+              </label>
+            </div>
+            <div class="ai-form-actions">
+              <button type="submit" class="btn btn-primary" id="aiSkillSave">添加 Skill</button>
+            </div>
+            <div class="ai-form-note">Skill 会写入 OPS_AI_SKILLS_DIR 指定目录，名称只能使用小写字母、数字、下划线或连字符。</div>
+          </form>
+          {% else %}
+          <div class="ai-form-note">当前账号可以查看 Skills；添加 Skill 仅限超级管理员。</div>
+          {% endif %}
+        </section>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary"
+        onclick="document.getElementById('aiSkillsOverlay').style.display='none'">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 能力清单 -->
+<div id="aiToolsOverlay" class="modal-overlay" style="display:none;">
+  <div class="modal-content ai-wide-modal">
+    <div class="modal-header">
+      <h3>AI 当前能做什么</h3>
+      <button type="button" class="modal-close" id="aiToolsClose">×</button>
+    </div>
+    <div class="modal-body" id="aiToolsBody"></div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary"
+        onclick="document.getElementById('aiToolsOverlay').style.display='none'">关闭</button>
+    </div>
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.AI_PAGE_CONFIG = {
+    enabled: {{ 'true' if ai_config.enabled else 'false' }},
+    page: '{{ ai_config.page }}',
+    role: '{{ ai_config.role }}',
+    traditionalFallback: {{ 'true' if ai_config.traditional_fallback else 'false' }},
+    maskIp: {{ 'true' if ai_config.mask_ip else 'false' }},
+    allowCloud: {{ 'true' if ai_config.allow_cloud else 'false' }},
+    maxInputChars: {{ ai_config.max_input_chars }},
+    actionTtl: {{ ai_config.action_ttl }},
+    dailyTokenLimit: {{ ai_config.daily_token_limit }}
+  };
+</script>
+<script src="/static/ai-markdown.js?v=1"></script>
+<script src="/static/ai.js?v=11"></script>
+{% endblock %}

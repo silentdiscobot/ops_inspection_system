@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="audit-page-hero">
+  <div class="page-header ai-page-header operation-audit-heading">
+    <div>
+      <span class="audit-eyebrow">AUDIT CENTER</span>
+      <h1 class="page-title"><img src="/static/images/logo-robot.png" alt="" class="ai-logo-icon" aria-hidden="true"> 操作审计</h1>
+      <p class="page-subtitle">统一追溯 AI 运维中的命令执行与用户会话。</p>
+    </div>
+  </div>
+  <nav class="audit-module-tabs" aria-label="操作审计类型">
+    <a href="/ai/operation-audit"><span aria-hidden="true">⌘</span><span><strong>命令操作审计</strong><small>服务器执行记录</small></span></a>
+    <a href="/ai/conversation-audit" class="is-active" aria-current="page"><span aria-hidden="true">◎</span><span><strong>AI会话审计</strong><small>用户提问记录</small></span></a>
+  </nav>
+</div>
+
+<section class="operation-audit-summary" aria-label="AI会话审计概览">
+  <article data-icon="∑"><span>用户提问</span><strong id="conversationAuditTotal">0</strong><small>问题总数</small></article>
+  <article data-icon="人"><span>提问用户</span><strong id="conversationAuditUsers">0</strong><small>涉及账号</small></article>
+  <article data-icon="◎"><span>涉及会话</span><strong id="conversationAuditConversations">0</strong><small>会话总数</small></article>
+  <article data-icon="今"><span>今日提问</span><strong id="conversationAuditToday">0</strong><small>本日新增</small></article>
+</section>
+
+<section class="card operation-audit-card">
+  <div class="card-header operation-audit-card-header">
+    <div><div class="card-icon">◎</div><div><h3 class="card-title">用户提问明细</h3><small>仅展示用户提交的问题，不包含 AI 回复与工具消息</small></div></div>
+    <span class="audit-live-badge"><i></i>审计数据</span>
+  </div>
+  <div class="card-body">
+    <div class="audit-filter-heading"><div><strong>筛选条件</strong><small>可组合用户、问题关键词和时间范围精确查询</small></div></div>
+    <form id="conversationAuditFilters" class="conversation-audit-filters">
+      <div class="form-group">
+        <label class="form-label" for="conversationAuditUsername">用户名</label>
+        <select id="conversationAuditUsername" class="form-select"><option value="">全部用户</option></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="conversationAuditKeyword">问题关键词</label>
+        <input id="conversationAuditKeyword" type="search" maxlength="200" class="form-control" placeholder="搜索用户提问内容">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="conversationAuditStart">开始时间</label>
+        <input id="conversationAuditStart" type="datetime-local" class="form-control">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="conversationAuditEnd">结束时间</label>
+        <input id="conversationAuditEnd" type="datetime-local" class="form-control">
+      </div>
+      <div class="operation-audit-filter-actions">
+        <button type="submit" class="btn btn-primary">查询</button>
+        <button type="button" id="conversationAuditReset" class="btn btn-secondary">重置</button>
+      </div>
+    </form>
+
+    <div class="audit-result-toolbar">
+      <div class="audit-result-view">
+        <span>结果视图</span>
+        <div class="operation-audit-dimensions" role="group" aria-label="结果视图">
+          <button type="button" class="conversation-dimension-btn operation-dimension-btn is-active" data-dimension="time">时间明细</button>
+          <button type="button" class="conversation-dimension-btn operation-dimension-btn" data-dimension="user">用户分组</button>
+          <button type="button" class="conversation-dimension-btn operation-dimension-btn" data-dimension="question">问题分组</button>
+        </div>
+      </div>
+      <div id="conversationAuditContext" class="operation-audit-context">按提问时间倒序展示全部明细。</div>
+    </div>
+
+    <div class="table-wrapper operation-audit-table-wrap">
+      <table class="data-table operation-audit-table conversation-audit-table">
+        <thead><tr><th>提问时间</th><th>用户</th><th>所属会话</th><th>用户问题</th></tr></thead>
+        <tbody id="conversationAuditRows"><tr><td colspan="4" class="empty-row">正在加载…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="operation-audit-pagination">
+      <span id="conversationAuditPageInfo">第 1 / 1 页</span>
+      <div>
+        <button type="button" id="conversationAuditPrev" class="btn btn-secondary btn-sm">上一页</button>
+        <button type="button" id="conversationAuditNext" class="btn btn-secondary btn-sm">下一页</button>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/conversation-audit.js?v=1"></script>{% endblock %}

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="audit-page-hero">
+  <div class="page-header ai-page-header operation-audit-heading">
+    <div>
+      <span class="audit-eyebrow">AUDIT CENTER</span>
+      <h1 class="page-title"><img src="/static/images/logo-robot.png" alt="" class="ai-logo-icon" aria-hidden="true"> 操作审计</h1>
+      <p class="page-subtitle">统一追溯 AI 运维中的命令执行与用户会话。</p>
+    </div>
+  </div>
+  <nav class="audit-module-tabs" aria-label="操作审计类型">
+    <a href="/ai/operation-audit" class="is-active" aria-current="page"><span aria-hidden="true">⌘</span><span><strong>命令操作审计</strong><small>服务器执行记录</small></span></a>
+    <a href="/ai/conversation-audit"><span aria-hidden="true">◎</span><span><strong>AI会话审计</strong><small>用户提问记录</small></span></a>
+  </nav>
+</div>
+
+<section class="operation-audit-summary" aria-label="操作审计概览">
+  <article data-icon="∑"><span>执行记录</span><strong id="operationAuditTotal">0</strong><small>命令总数</small></article>
+  <article data-icon="人"><span>操作用户</span><strong id="operationAuditUsers">0</strong><small>涉及账号</small></article>
+  <article data-icon="▤"><span>目标服务器</span><strong id="operationAuditServers">0</strong><small>涉及主机</small></article>
+  <article class="operation-audit-failed" data-icon="!"><span>执行失败</span><strong id="operationAuditFailed">0</strong><small>需关注记录</small></article>
+</section>
+
+<section class="card operation-audit-card">
+  <div class="card-header operation-audit-card-header">
+    <div><div class="card-icon">⌘</div><div><h3 class="card-title">命令执行明细</h3><small>仅展示真实进入执行器的命令</small></div></div>
+    <span class="audit-live-badge"><i></i>审计数据</span>
+  </div>
+  <div class="card-body">
+    <div class="audit-filter-heading"><div><strong>筛选条件</strong><small>可组合用户、服务器、时间和执行状态精确查询</small></div></div>
+    <form id="operationAuditFilters" class="operation-audit-filters">
+      <div class="form-group">
+        <label class="form-label" for="operationAuditUsername">用户名</label>
+        <select id="operationAuditUsername" class="form-select"><option value="">全部用户</option></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="operationAuditServer">服务器</label>
+        <select id="operationAuditServer" class="form-select"><option value="">全部服务器</option></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="operationAuditStart">开始时间</label>
+        <input id="operationAuditStart" type="datetime-local" class="form-control">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="operationAuditEnd">结束时间</label>
+        <input id="operationAuditEnd" type="datetime-local" class="form-control">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="operationAuditStatus">执行状态</label>
+        <select id="operationAuditStatus" class="form-select">
+          <option value="">全部状态</option><option value="success">成功</option><option value="failed">失败</option>
+        </select>
+      </div>
+      <div class="operation-audit-filter-actions">
+        <button type="submit" class="btn btn-primary">查询</button>
+        <button type="button" id="operationAuditReset" class="btn btn-secondary">重置</button>
+      </div>
+    </form>
+
+    <div class="audit-result-toolbar">
+      <div class="audit-result-view">
+        <span>结果视图</span>
+        <div class="operation-audit-dimensions" role="group" aria-label="结果视图">
+          <button type="button" class="operation-dimension-btn is-active" data-dimension="time">时间明细</button>
+          <button type="button" class="operation-dimension-btn" data-dimension="user">用户分组</button>
+          <button type="button" class="operation-dimension-btn" data-dimension="server">服务器分组</button>
+        </div>
+      </div>
+      <div id="operationAuditContext" class="operation-audit-context">按执行时间倒序展示全部明细。</div>
+    </div>
+    <div class="table-wrapper operation-audit-table-wrap">
+      <table class="data-table operation-audit-table">
+        <thead><tr><th>执行时间</th><th>用户</th><th>服务器</th><th>执行命令</th><th>状态</th></tr></thead>
+        <tbody id="operationAuditRows"><tr><td colspan="5" class="empty-row">正在加载…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="operation-audit-pagination">
+      <span id="operationAuditPageInfo">第 1 / 1 页</span>
+      <div>
+        <button type="button" id="operationAuditPrev" class="btn btn-secondary btn-sm">上一页</button>
+        <button type="button" id="operationAuditNext" class="btn btn-secondary btn-sm">下一页</button>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/operation-audit.js?v=2"></script>{% endblock %}

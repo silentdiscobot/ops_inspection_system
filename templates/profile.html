@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="profile-container">
+  <div class="profile-card">
+    <div class="profile-header">
+      <div class="avatar-wrapper">
+        <div class="avatar">
+          <span class="avatar-icon">👤</span>
+        </div>
+        <div class="avatar-glow"></div>
+      </div>
+      <h2 class="username">{{ current_user.username }}</h2>
+      <p class="role">{{ current_user.role_text }}</p>
+    </div>
+    
+    <div class="profile-info">
+      <div class="info-item">
+        <span class="info-label">用户名</span>
+        <span class="info-value">{{ current_user.username }}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">用户名称</span>
+        <span class="info-value">{{ current_user.display_name or '-' }}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">联系方式</span>
+        <span class="info-value">{{ current_user.contact or '-' }}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">角色权限</span>
+        <span class="info-value">{{ current_user.role_text }}</span>
+      </div>
+    </div>
+    
+    <div class="profile-actions">
+      <button class="action-btn logout-btn" onclick="handleLogout()">
+        <span class="btn-icon">🚪</span>
+        <span class="btn-text">退出登录</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+function handleLogout() {
+  fetch('/api/logout', { method: 'POST' })
+    .then(function() {
+      window.location.href = '/login';
+    })
+    .catch(function() {
+      window.location.href = '/login';
+    });
+}
+</script>
+{% endblock %}

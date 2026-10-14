@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs & Data
+logs/
+data/
+*.log
+
+# Reports
+reports/
+*.xlsx
+*.pdf
+
+# Temporary files
+tmp/
+
+# Environment
+.env
+.env.local
+
+# Deployment secrets (keep documentation only)
+secrets/*
+!secrets/README.md
+!secrets/ssh/
+secrets/ssh/*
+!secrets/ssh/README.md
+
+# Cookies
+cookies*.txt

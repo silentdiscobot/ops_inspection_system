@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header resource-page-header">
+  <div>
+    <h1 class="page-title">历史变更</h1>
+    <p class="page-subtitle">查看资源配置的计划变更与实际变化记录</p>
+  </div>
+</div>
+
+<div class="resource-summary">
+  <article><span>历史记录</span><strong id="resourceHistoryCount">0</strong></article>
+</div>
+
+<section class="card resource-section-card">
+  <div class="card-header resource-history-header">
+    <div><div class="card-icon">↺</div><h3 class="card-title">历史变更记录</h3></div>
+    <button type="button" class="btn excel-action-btn" onclick="resourceDownloadHistory()" title="下载当前筛选条件下的历史变更记录">
+      <span class="excel-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 2.75h8l4 4v14.5H6z"/><path d="M14 2.75v4h4M8.8 11l4.4 5m0-5-4.4 5"/></svg></span>
+      <span class="excel-action-text">下载 Excel</span>
+      <span class="excel-action-meta">当前筛选</span>
+    </button>
+  </div>
+  <div class="card-body">
+    <div class="resource-history-filters">
+      <div class="form-group"><label class="form-label" for="resourceHistoryServer">服务器</label><select id="resourceHistoryServer" class="form-select" onchange="resourceFilterHistory()"><option value="">全部服务器</option></select></div>
+      <div class="form-group"><label class="form-label" for="resourceHistoryType">记录类型</label><select id="resourceHistoryType" class="form-select" onchange="resourceFilterHistory()"><option value="">全部类型</option><option value="plan">计划变更</option><option value="event">实际变化</option></select></div>
+      <div class="form-group"><label class="form-label" for="resourceHistoryFrom">开始日期</label><input id="resourceHistoryFrom" type="date" class="form-control" onchange="resourceFilterHistory()"></div>
+      <div class="form-group"><label class="form-label" for="resourceHistoryTo">结束日期</label><input id="resourceHistoryTo" type="date" class="form-control" onchange="resourceFilterHistory()"></div>
+      <button type="button" class="btn btn-secondary resource-history-reset" onclick="resourceResetHistory()">重置</button>
+    </div>
+    <div class="table-wrapper">
+      <table class="data-table resource-table resource-history-table">
+        <thead><tr><th>时间</th><th>服务器</th><th>类型</th><th>变化内容</th><th>状态</th><th>理由/操作人</th><th>变更单号</th></tr></thead>
+        <tbody id="resourceHistoryRows"><tr><td colspan="7" class="empty-row">正在加载…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/resource-changes.js?v=3"></script>{% endblock %}

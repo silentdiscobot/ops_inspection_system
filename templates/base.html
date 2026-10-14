@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <link rel="icon" type="image/png" href="/static/images/logo.png?v=1">
+  <title>灵兔洞察系统</title>
+  <link href="/static/lib/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css?v=70">
+</head>
+<body class="{% if request.path.startswith('/dashboard') %}dashboard-body{% endif %}">
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <img src="/static/images/logo.png?v=1" alt="灵兔洞察" class="sidebar-logo">
+    </div>
+    
+    <div class="sidebar-menu">
+      {% if current_user.role in ['admin', 'operator'] %}
+      <a href="/" class="menu-item">
+        <span class="menu-icon">🏠</span>
+        <span class="menu-text">首页</span>
+      </a>
+      <div class="menu-dropdown dashboard-menu-dropdown{% if request.path.startswith('/dashboard') %} expanded{% endif %}">
+        <a href="#" class="menu-item menu-dropdown-toggle system-menu-item dashboard-menu-item" onclick="toggleDropdown(this, event); return false;">
+          <span class="menu-icon">◈</span>
+          <span class="menu-text">可视化大屏</span>
+          <span class="menu-arrow" aria-hidden="true"></span>
+        </a>
+        <div class="menu-dropdown-content">
+          <a href="/dashboard/server-status" class="menu-item sub-menu-item{% if request.path == '/dashboard/server-status' %} active{% endif %}"><span class="menu-text">机器运行态势</span></a>
+          <a href="/dashboard/data-center" class="menu-item sub-menu-item{% if request.path == '/dashboard/data-center' %} active{% endif %}"><span class="menu-text">机房机柜视图</span></a>
+        </div>
+      </div>
+      <div class="menu-dropdown resource-overview-menu-dropdown">
+        <a href="#" class="menu-item menu-dropdown-toggle system-menu-item" onclick="toggleDropdown(this, event); return false;">
+          <span class="menu-icon">📋</span>
+          <span class="menu-text">资源总览表</span>
+          <span class="menu-arrow" aria-hidden="true"></span>
+        </a>
+        <div class="menu-dropdown-content">
+          <a href="/servers" class="menu-item sub-menu-item"><span class="menu-text">服务器列表</span></a>
+          <a href="/services" class="menu-item sub-menu-item"><span class="menu-text">服务信息表</span></a>
+        </div>
+      </div>
+      <a href="/server_inspect" class="menu-item">
+        <span class="menu-icon">🛠️</span>
+        <span class="menu-text">服务器巡检</span>
+      </a>
+      <div class="menu-dropdown ai-menu-dropdown{% if request.path.startswith('/ai') %} expanded{% endif %}">
+        <a href="#" class="menu-item menu-dropdown-toggle system-menu-item" onclick="toggleDropdown(this, event); return false;">
+          <span class="menu-icon"><img src="/static/images/logo-robot.png" alt="" class="ai-logo-icon" aria-hidden="true"></span>
+          <span class="menu-text">AI智能运维</span>
+          <span class="menu-arrow" aria-hidden="true"></span>
+        </a>
+        <div class="menu-dropdown-content">
+          <a href="/ai/chat" class="menu-item sub-menu-item{% if request.path in ['/ai', '/ai/chat'] %} active{% endif %}"><span class="menu-text">AI会话</span></a>
+          <a href="/ai/insights" class="menu-item sub-menu-item{% if request.path == '/ai/insights' %} active{% endif %}"><span class="menu-text">巡检解读</span></a>
+          {% if current_user.role == 'admin' %}
+          <a href="/ai/operation-audit" class="menu-item sub-menu-item{% if request.path in ['/ai/operation-audit', '/ai/conversation-audit'] %} active{% endif %}"><span class="menu-text">操作审计</span></a>
+          <a href="/ai/models" class="menu-item sub-menu-item{% if request.path == '/ai/models' %} active{% endif %}"><span class="menu-text">模型配置</span></a>
+          <a href="/ai/usage" class="menu-item sub-menu-item{% if request.path == '/ai/usage' %} active{% endif %}"><span class="menu-text">用量统计</span></a>
+          {% endif %}
+        </div>
+      </div>
+      <div class="menu-dropdown resource-management-menu-dropdown">
+        <a href="#" class="menu-item menu-dropdown-toggle system-menu-item" onclick="toggleDropdown(this, event); return false;">
+          <span class="menu-icon">🗂️</span>
+          <span class="menu-text">资源管理项</span>
+          <span class="menu-arrow" aria-hidden="true"></span>
+        </a>
+        <div class="menu-dropdown-content">
+          <a href="/servers-new" class="menu-item sub-menu-item"><span class="menu-text">新增服务器</span></a>
+          <a href="/server-environments" class="menu-item sub-menu-item"><span class="menu-text">新增环境项</span></a>
+          <a href="/service-systems" class="menu-item sub-menu-item"><span class="menu-text">新增系统项</span></a>
+          <a href="/services-new" class="menu-item sub-menu-item"><span class="menu-text">新增服务表</span></a>
+        </div>
+      </div>
+      <div class="menu-dropdown operations-change-menu-dropdown">
+        <a href="#" class="menu-item menu-dropdown-toggle system-menu-item" onclick="toggleDropdown(this, event); return false;">
+          <span class="menu-icon">🔄</span>
+          <span class="menu-text">运维变更单</span>
+          <span class="menu-arrow" aria-hidden="true"></span>
+        </a>
+        <div class="menu-dropdown-content">
+          <a href="/resource-changes" class="menu-item sub-menu-item"><span class="menu-text">资源变更表</span></a>
+          <a href="/resource-change-history" class="menu-item sub-menu-item"><span class="menu-text">历史变更表</span></a>
+        </div>
+      </div>
+      {% endif %}
+      
+      <a href="/reports" class="menu-item">
+        <span class="menu-icon">📊</span>
+        <span class="menu-text">历史报告单</span>
+      </a>
+      
+      {% if current_user.role == 'admin' %}
+      <div class="menu-dropdown system-management-menu-dropdown{% if request.path in ['/users', '/audit-logs'] %} expanded{% endif %}">
+        <a href="#" class="menu-item menu-dropdown-toggle system-menu-item" onclick="toggleDropdown(this, event); return false;">
+          <span class="menu-icon">⚙️</span>
+          <span class="menu-text">系统管理项</span>
+          <span class="menu-arrow" aria-hidden="true"></span>
+        </a>
+        <div class="menu-dropdown-content">
+          <a href="/users" class="menu-item sub-menu-item{% if request.path == '/users' %} active{% endif %}">
+            <span class="menu-text">用户管理</span>
+          </a>
+          <a href="/audit-logs" class="menu-item sub-menu-item{% if request.path == '/audit-logs' %} active{% endif %}">
+            <span class="menu-text">日志审计</span>
+          </a>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    
+    <div class="sidebar-footer">
+      <div class="sidebar-actions">
+        <a href="/profile" class="sidebar-action-btn sidebar-action-exit">退出</a>
+      </div>
+      <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">
+        <span class="toggle-icon">◀</span>
+      </button>
+    </div>
+  </nav>
+  
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  
+  <script src="/static/lib/socket.io.min.js"></script>
+  <script src="/static/lib/axios.min.js"></script>
+  <script src="/static/app.js?v=10"></script>
+  <script src="/static/app-shell.js?v=8"></script>
+  <script>
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('collapsed');
+      document.querySelector('main').classList.toggle('sidebar-collapsed');
+    }
+    
+    function toggleDropdown(button, event) {
+      var dropdown = button.parentElement;
+      var dropdowns = Array.prototype.slice.call(document.querySelectorAll('.menu-dropdown'));
+      var isExpanded = dropdown.classList.contains('expanded');
+      dropdowns.forEach(function(item) {
+        if (item !== dropdown) item.classList.remove('expanded');
+      });
+      dropdown.classList.toggle('expanded', !isExpanded);
+    }
+
+  </script>
+  <div id="pageScripts" hidden>{% block scripts %}{% endblock %}</div>
+</body>
+</html>

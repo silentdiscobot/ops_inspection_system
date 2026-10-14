@@ -1,0 +1,31 @@
+{
+  "servers": {
+    "internal-ops": {
+      "title": "内网运维扩展",
+      "description": "只开放管理员审核过的 MCP 工具",
+      "command": "python",
+      "args": ["E:/ops-mcp/server.py"],
+      "cwd": "E:/ops-mcp",
+      "env": {
+        "OPS_MCP_TOKEN": "请通过部署环境注入，不要提交真实密钥"
+      },
+      "disabled": false,
+      "allowed_tools": [
+        {
+          "name": "query_release_status",
+          "title": "查询发布状态",
+          "description": "读取指定应用最近一次发布结果，不执行变更",
+          "risk": "low",
+          "enabled": true
+        },
+        {
+          "name": "restart_application",
+          "title": "重启应用",
+          "description": "按应用 ID 重启已登记应用",
+          "risk": "high",
+          "enabled": false
+        }
+      ]
+    }
+  }
+}

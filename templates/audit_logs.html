@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header operation-audit-heading">
+  <div>
+    <h1 class="page-title">日志审计</h1>
+    <p class="page-subtitle">集中查看服务器、服务台账、资源变更、AI 运维等全系统安全与操作记录。</p>
+  </div>
+</div>
+
+<section class="operation-audit-summary" aria-label="全系统审计概览">
+  <article><span>审计记录</span><strong id="systemAuditTotal">0</strong></article>
+  <article><span>操作用户</span><strong id="systemAuditUsers">0</strong></article>
+  <article><span>操作类型</span><strong id="systemAuditActions">0</strong></article>
+  <article class="operation-audit-failed"><span>异常 / 拒绝</span><strong id="systemAuditAbnormal">0</strong></article>
+</section>
+
+<section class="card operation-audit-card">
+  <div class="card-header operation-audit-card-header">
+    <div><div class="card-icon">◎</div><h3 class="card-title">全系统审计明细</h3></div>
+  </div>
+  <div class="card-body">
+    <form id="systemAuditFilters" class="system-audit-filters">
+      <div class="form-group">
+        <label class="form-label" for="systemAuditUsername">用户名</label>
+        <select id="systemAuditUsername" class="form-select"><option value="">全部用户</option></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="systemAuditAction">操作类型</label>
+        <select id="systemAuditAction" class="form-select"><option value="">全部操作</option></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="systemAuditResult">操作结果</label>
+        <select id="systemAuditResult" class="form-select"><option value="">全部结果</option></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="systemAuditStart">开始时间</label>
+        <input id="systemAuditStart" type="datetime-local" class="form-control">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="systemAuditEnd">结束时间</label>
+        <input id="systemAuditEnd" type="datetime-local" class="form-control">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="systemAuditKeyword">关键词</label>
+        <input id="systemAuditKeyword" type="search" maxlength="200" class="form-control" placeholder="用户、IP、目标或详情">
+      </div>
+      <div class="operation-audit-filter-actions system-audit-filter-actions">
+        <button type="submit" class="btn btn-primary">查询</button>
+        <button type="button" id="systemAuditReset" class="btn btn-secondary">重置</button>
+      </div>
+    </form>
+
+    <div class="operation-audit-context system-audit-context">按记录时间倒序展示，审计范围覆盖系统各业务模块。</div>
+    <div class="table-wrapper operation-audit-table-wrap">
+      <table class="data-table system-audit-table">
+        <thead><tr><th>记录时间</th><th>用户 / IP</th><th>模块 / 操作</th><th>操作目标</th><th>结果</th><th>详情</th></tr></thead>
+        <tbody id="systemAuditRows"><tr><td colspan="6" class="empty-row">正在加载…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="operation-audit-pagination">
+      <span id="systemAuditPageInfo">第 1 / 1 页</span>
+      <div>
+        <button type="button" id="systemAuditPrev" class="btn btn-secondary btn-sm">上一页</button>
+        <button type="button" id="systemAuditNext" class="btn btn-secondary btn-sm">下一页</button>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/audit-logs.js?v=1"></script>{% endblock %}

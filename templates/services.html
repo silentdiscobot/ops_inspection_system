@@ -1,0 +1,1026 @@
+{% extends "base.html" %}
+{% set page_mode = page_mode|default('list') %}
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">
+    {{ '服务信息表' if page_mode == 'list' else ('新增服务表' if page_mode == 'new' else '编辑服务表') }}
+  </h1>
+  <p class="page-subtitle">
+    {{ '集中查看、筛选和维护服务信息表及其归属、端口与账号信息' if page_mode == 'list'
+       else ('登记服务所属服务器、归属系统与环境、部署与启停信息' if page_mode == 'new'
+             else '修改服务信息；账号信息需验证当前登录密码后查看和编辑') }}
+  </p>
+</div>
+
+<div class="row server-management-row">
+  <div class="col-lg-12 server-section">
+    {% if page_mode == 'list' %}
+    <!-- 服务信息表列表 -->
+    <div class="card list-card">
+      <div class="card-header">
+        <div class="card-icon">🧩</div>
+        <h3 class="card-title">服务信息表列表</h3>
+        <div class="list-header-actions">
+          <button type="button" class="btn excel-action-btn" onclick="openAssetExportDialog('serviceExport')" title="选择字段并导出当前筛选结果">
+            <span class="excel-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 2.75h8l4 4v14.5H6z"/><path d="M14 2.75v4h4M8.8 11l4.4 5m0-5-4.4 5"/></svg></span>
+            <span class="excel-action-text">导出 Excel</span>
+          </button>
+          <a href="/services-new" class="btn btn-primary">新增服务表</a>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <div class="server-filter-bar service-filter-bar">
+          <div class="server-filter-fields">
+            <span class="filter-title">筛选</span>
+            <label class="filter-control"><span>归属系统</span><select id="filterSystem" class="form-select">
+              <option value="">全部系统</option>
+              {% for item in systems %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}
+            </select></label>
+            <label class="filter-control"><span>归属环境</span><select id="filterEnvironment" class="form-select">
+              <option value="">全部环境</option>
+              {% for item in environments %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}
+            </select></label>
+            <label class="filter-control"><span>服务类型</span><select id="filterServiceType" class="form-select">
+              <option value="">全部类型</option>
+              <option value="中间件">中间件</option><option value="应用服务">应用服务</option>
+              <option value="数据库">数据库</option><option value="定时任务">定时任务</option><option value="其他">其他</option>
+            </select></label>
+            <label class="filter-control"><span>状态</span><select id="filterStatus" class="form-select">
+              <option value="">全部状态</option>
+              <option value="运行中">运行中</option><option value="已停止">已停止</option><option value="已下线">已下线</option>
+            </select></label>
+            <button type="button" class="btn btn-secondary" id="serviceFilterReset">重置</button>
+          </div>
+          <div class="server-search-group">
+            <input id="serviceKeyword" class="form-control server-search" type="search" placeholder="搜索服务名称、IP、部署目录、端口或负责人">
+            <button type="button" class="btn btn-primary server-search-btn" id="serviceSearchBtn">搜索</button>
+          </div>
+        </div>
+
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>服务名称</th>
+                <th>IP地址</th>
+                <th>归属系统</th>
+                <th>归属环境</th>
+                <th>服务类型</th>
+                <th>端口</th>
+                <th>状态</th>
+                <th>账号</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="serviceTbody">
+              {% for s in services %}
+              <tr data-service-name="{{ s.name }}">
+                <td>{{ s.name or '-' }}</td>
+                <td class="ip-cell">{{ s.ip }}</td>
+                <td class="groups-cell">
+                  {% if s.system_names and s.system_names != '无' %}
+                    {% for name in s.system_names.split(', ') %}<span class="group-tag">{{ name }}</span>{% endfor %}
+                  {% else %}<span class="empty-text">-</span>{% endif %}
+                </td>
+                <td class="groups-cell">
+                  {% if s.environment_names and s.environment_names != '无' %}
+                    {% for name in s.environment_names.split(', ') %}<span class="group-tag">{{ name }}</span>{% endfor %}
+                  {% else %}<span class="empty-text">-</span>{% endif %}
+                </td>
+                <td>{{ s.service_type or '-' }}</td>
+                <td>{{ s.ports or '-' }}</td>
+                <td><span class="service-status {{ service_status_class(s.status) }}">{{ s.status or '-' }}</span></td>
+                <td>
+                  {% if s.account_count %}<span class="account-badge">{{ s.account_count }} 个</span>
+                  {% else %}<span class="empty-text">-</span>{% endif %}
+                </td>
+                <td class="service-actions-cell">
+                  <button class="btn btn-sm btn-view" onclick="viewService({{ s.id }})">查看</button>
+                  <a class="btn btn-sm btn-primary" href="/services/{{ s.id }}/edit">编辑</a>
+                  <button class="btn btn-sm btn-danger" onclick="deleteService({{ s.id }}, this)">删除</button>
+                </td>
+              </tr>
+              {% endfor %}
+              {% if not services %}
+              <tr>
+                <td colspan="9" class="empty-row">
+                  <span class="empty-icon">📭</span>
+                  <span>暂无服务信息</span>
+                </td>
+              </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if page_mode in ['new', 'edit'] %}
+    <!-- 服务表表单 -->
+    <div class="card server-card">
+      <div class="card-header">
+        <div class="card-icon">🧩</div>
+        <h3 class="card-title">{{ '新增服务表' if page_mode == 'new' else '编辑服务表' }}</h3>
+      </div>
+
+      <div class="card-body">
+        {% if not servers %}
+        <div class="empty-state">系统中还没有服务器，请先到「资源管理项 → 新增服务器」录入服务器后再登记服务信息。</div>
+        {% endif %}
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">服务名称</label>
+            <input type="text" id="serviceName" class="form-control" maxlength="100" placeholder="例如：订单服务"
+                   value="{{ service.name if service else '' }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">IP地址</label>
+            <select id="serviceServerId" class="form-select">
+              <option value="">请选择服务器</option>
+              {% for srv in servers %}
+              <option value="{{ srv.id }}" {% if service and service.server_id == srv.id %}selected{% endif %}>{{ srv.name or '未命名服务器' }}（{{ srv.ip }}）</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">服务类型</label>
+            <select id="serviceType" class="form-select">
+              {% for option in ['中间件', '应用服务', '数据库', '定时任务', '其他'] %}
+              <option {% if service and service.service_type == option %}selected{% elif not service and option == '应用服务' %}selected{% endif %}>{{ option }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">运行方式</label>
+            <select id="serviceRunMode" class="form-select">
+              {% for option in ['systemd', 'docker', 'supervisor', '脚本', 'k8s', '其他'] %}
+              <option {% if service and service.run_mode == option %}selected{% elif not service and option == 'systemd' %}selected{% endif %}>{{ option }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">版本号</label>
+            <input type="text" id="serviceVersion" class="form-control" maxlength="50" placeholder="例如：1.4.2"
+                   value="{{ service.version if service else '' }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">负责人</label>
+            <input type="text" id="serviceOwner" class="form-control" maxlength="50" placeholder="例如：张三"
+                   value="{{ service.owner if service else '' }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">服务状态</label>
+            <select id="serviceStatus" class="form-select">
+              {% for option in ['运行中', '已停止', '已下线'] %}
+              <option {% if service and service.status == option %}selected{% elif not service and option == '运行中' %}selected{% endif %}>{{ option }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">是否开机自启</label>
+            <select id="serviceAutoStart" class="form-select">
+              <option value="0" {% if not service or not service.auto_start %}selected{% endif %}>否</option>
+              <option value="1" {% if service and service.auto_start %}selected{% endif %}>是</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">部署目录</label>
+            <input type="text" id="serviceDeployDir" class="form-control" maxlength="200" placeholder="例如：/opt/order"
+                   value="{{ service.deploy_dir if service else '' }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">端口信息</label>
+            <input type="text" id="servicePorts" class="form-control" maxlength="200" placeholder="例如：8080/tcp(HTTP), 8443/tcp(HTTPS)"
+                   value="{{ service.ports if service else '' }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">配置文件路径</label>
+            <input type="text" id="serviceConfigPath" class="form-control" maxlength="200" placeholder="例如：/opt/order/conf/application.yml"
+                   value="{{ service.config_path if service else '' }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">日志路径</label>
+            <input type="text" id="serviceLogPath" class="form-control" maxlength="200" placeholder="例如：/opt/order/logs"
+                   value="{{ service.log_path if service else '' }}">
+          </div>
+          <div class="form-group full-width">
+            <label class="form-label">访问地址</label>
+            <input type="text" id="serviceAccessUrl" class="form-control" maxlength="200" placeholder="例如：http://10.0.0.11:8080/order"
+                   value="{{ service.access_url if service else '' }}">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group full-width">
+            <label class="form-label">启动命令</label>
+            <input type="text" id="serviceStartCommand" class="form-control" maxlength="500"
+                   placeholder="例如：cd /opt/order && nohup ./start.sh >> logs/start.log 2>&1 &"
+                   value="{{ service.start_command if service else '' }}">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group full-width">
+            <label class="form-label">停止命令</label>
+            <input type="text" id="serviceStopCommand" class="form-control" maxlength="500"
+                   placeholder="例如：cd /opt/order && ./stop.sh"
+                   value="{{ service.stop_command if service else '' }}">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group full-width">
+            <label class="form-label">重启命令</label>
+            <input type="text" id="serviceRestartCommand" class="form-control" maxlength="500"
+                   placeholder="例如：systemctl restart order-service"
+                   value="{{ service.restart_command if service else '' }}">
+            <div class="form-hint">命令仅作记录和展示，系统不会自动执行；如果命令中带明文密码，建议改用配置文件或环境变量。</div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group full-width">
+            <label class="form-label">归属系统（可多选）</label>
+            <div class="tags-container">
+              {% for item in systems %}
+              <label class="tag-checkbox">
+                <input type="checkbox" name="serviceSystems" value="{{ item.id }}"
+                       {% if service and item.id in service.system_ids %}checked{% endif %}>
+                <span>{{ item.name }}</span>
+              </label>
+              {% endfor %}
+              {% if not systems %}<span class="empty-hint">请先到「资源管理项 → 新增系统项」创建系统项</span>{% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group full-width">
+            <label class="form-label">归属环境（可多选）</label>
+            <div class="tags-container">
+              {% for item in environments %}
+              <label class="tag-checkbox">
+                <input type="checkbox" name="serviceEnvironments" value="{{ item.id }}"
+                       {% if service and item.id in service.environment_ids %}checked{% endif %}>
+                <span>{{ item.name }}</span>
+              </label>
+              {% endfor %}
+              {% if not environments %}<span class="empty-hint">请先到「资源管理项 → 新增环境项」创建环境项</span>{% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group full-width">
+            <label class="form-label">账号信息（可多条）</label>
+            {% if page_mode == 'edit' %}
+            <div id="accountLocked" class="locked-panel">
+              <div class="locked-panel-text">
+                该服务已登记 <strong>{{ service.account_count }}</strong> 个账号。账号信息需验证当前登录密码后才能查看和编辑。
+              </div>
+              <button type="button" class="btn btn-secondary" onclick="unlockAccounts()">验证并解锁</button>
+            </div>
+            {% endif %}
+            <div id="accountRowsWrap" {% if page_mode == 'edit' %}hidden{% endif %}>
+              <div id="accountRows"></div>
+              <button type="button" class="btn btn-secondary" onclick="appendAccountRow()">+ 添加账号</button>
+              <div class="form-hint">
+                {% if page_mode == 'edit' %}密码留空表示不修改已保存的密码；类型为「密码」的新账号必须填写密码。{% else %}密码使用 AES-GCM 加密保存，查看时需再次验证当前登录密码。{% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group full-width">
+            <label class="form-label">备注信息</label>
+            <input type="text" id="serviceNotes" class="form-control" maxlength="500" placeholder="可选备注"
+                   value="{{ service.notes if service else '' }}">
+          </div>
+        </div>
+
+        <div class="form-row server-form-actions">
+          <button type="button" id="saveServiceBtn" class="btn btn-primary" onclick="saveService()" {% if not servers %}disabled{% endif %}>
+            {{ '添加服务表' if page_mode == 'new' else '保存修改' }}
+          </button>
+          <a href="/services" class="btn btn-secondary">返回列表</a>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% if page_mode == 'list' %}
+<div id="viewServiceOverlay" class="modal-overlay" style="display:none;">
+  <div class="modal-content server-edit-modal">
+    <div class="modal-header"><h3>服务完整信息</h3><button type="button" class="modal-close" onclick="closeViewService()">×</button></div>
+    <div class="modal-body">
+      <div id="serviceDetailLoading" class="empty-state">正在加载服务信息…</div>
+      <div id="serviceDetailGrid" class="server-detail-grid" hidden></div>
+      <div class="account-summary-bar">
+        <span>账号信息</span>
+        <strong id="viewAccountSummary">-</strong>
+        <button type="button" class="btn btn-sm btn-view" id="viewRevealBtn" onclick="openRevealDialog()" disabled>查看账号信息</button>
+      </div>
+    </div>
+    <div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="closeViewService()">关闭</button></div>
+  </div>
+</div>
+{% set export_dialog_id = 'serviceExport' %}
+{% set export_dialog_title = '导出服务信息表' %}
+{% set export_entity = 'services' %}
+{% set export_fields = service_export_fields %}
+{% include '_asset_export_dialog.html' %}
+{% endif %}
+
+<div id="revealOverlay" class="modal-overlay" style="display:none;">
+  <div class="modal-content reveal-modal">
+    <div class="modal-header"><h3>查看账号信息</h3><button type="button" class="modal-close" onclick="closeRevealDialog()">×</button></div>
+    <div class="modal-body">
+      <div id="revealNotice" class="reveal-notice">为保护凭据，请输入<strong>当前登录账号的密码</strong>完成身份验证。验证失败会记录审计日志。</div>
+      <div id="revealForm">
+        <div class="form-group">
+          <label class="form-label">当前登录密码</label>
+          <input type="password" id="revealPassword" class="form-control" autocomplete="current-password" placeholder="请输入当前登录账号的密码">
+        </div>
+        <div id="revealError" class="reveal-error" hidden></div>
+      </div>
+      <div id="revealResult" hidden>
+        <div class="reveal-toolbar">
+          <span id="revealCountdown" class="reveal-countdown"></span>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="hideRevealedSecrets('账号信息已隐藏')">立即隐藏</button>
+        </div>
+        <div id="revealResultBody" class="reveal-result-body"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <span class="modal-footer-spacer"></span>
+      <button type="button" class="btn btn-secondary" onclick="closeRevealDialog()">关闭</button>
+      <button type="button" class="btn btn-primary" id="revealSubmitBtn" onclick="submitReveal()">验证并查看</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/asset-export.js?v=1"></script>
+<script>
+var SERVICE_PAGE = {
+  mode: '{{ page_mode }}',
+  serviceId: {{ service.id if service else 'null' }}
+};
+// 编辑页在解锁账号区之前不会提交 accounts 键，后端据此保持账号原状。
+var accountsUnlocked = false;
+var activeRevealServiceId = null;
+var revealSuccessHandler = null;
+var revealCountdownTimer = null;
+var serviceFilterRequestId = 0;
+
+function escapeServiceHtml(value) {
+  var div = document.createElement('div');
+  div.textContent = value == null ? '' : value;
+  return div.innerHTML;
+}
+
+// 拼接 HTML 属性值时使用：escapeServiceHtml 不转义引号，直接用于属性会造成属性注入。
+function escapeServiceAttr(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function detailItem(label, value, wide) {
+  var wrap = document.createElement('div');
+  if (wide) wrap.className = 'detail-wide';
+  var name = document.createElement('span');
+  name.textContent = label;
+  var content = document.createElement('strong');
+  content.textContent = (value === 0 || value) ? value : '-';
+  wrap.appendChild(name);
+  wrap.appendChild(content);
+  return wrap;
+}
+
+function serviceTextCell(value) {
+  var cell = document.createElement('td');
+  cell.textContent = (value === 0 || value) ? value : '-';
+  return cell;
+}
+
+/* ---------------- 列表页 ---------------- */
+function applyServiceFilters() {
+  var tbody = document.getElementById('serviceTbody');
+  if (!tbody) return;
+  var params = new URLSearchParams();
+  [['system_id', 'filterSystem'], ['environment_id', 'filterEnvironment'],
+   ['service_type', 'filterServiceType'], ['status', 'filterStatus']].forEach(function (pair) {
+    var element = document.getElementById(pair[1]);
+    if (element && element.value) params.set(pair[0], element.value);
+  });
+  var keywordInput = document.getElementById('serviceKeyword');
+  if (keywordInput && keywordInput.value.trim()) params.set('keyword', keywordInput.value.trim());
+
+  var requestId = ++serviceFilterRequestId;
+  var url = '/api/services' + (params.toString() ? '?' + params.toString() : '');
+  fetch(url, {credentials: 'include'})
+    .then(function (response) {
+      return response.json().then(function (data) {
+        if (!response.ok) throw new Error((data && data.msg) || '筛选请求失败');
+        return data;
+      });
+    })
+    .then(function (data) {
+      if (requestId !== serviceFilterRequestId) return;
+      if (!Array.isArray(data)) throw new Error('服务信息表数据格式异常');
+      renderServiceRows(data);
+    })
+    .catch(function (error) {
+      if (requestId !== serviceFilterRequestId) return;
+      tbody.innerHTML = '<tr><td colspan="9" class="empty-row"><span>加载失败：' +
+        escapeServiceHtml(error.message) + '</span></td></tr>';
+    });
+}
+
+function renderServiceRows(data) {
+  var tbody = document.getElementById('serviceTbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-row"><span class="empty-icon">📭</span><span>没有符合条件的服务信息</span></td></tr>';
+    return;
+  }
+  var rowsHtml = [];
+  for (var i = 0; i < data.length; i++) {
+    var service = data[i];
+    var systemTags = serviceTagsHtml(service.system_names);
+    var environmentTags = serviceTagsHtml(service.environment_names);
+    var accounts = service.account_count
+      ? '<span class="account-badge">' + escapeServiceHtml(service.account_count) + ' 个</span>'
+      : '<span class="empty-text">-</span>';
+    rowsHtml.push('<tr data-service-name="' + escapeServiceAttr(service.name || '') + '">' +
+      '<td>' + escapeServiceHtml(service.name || '-') + '</td>' +
+      '<td class="ip-cell">' + escapeServiceHtml(service.ip) + '</td>' +
+      '<td class="groups-cell">' + systemTags + '</td>' +
+      '<td class="groups-cell">' + environmentTags + '</td>' +
+      '<td>' + escapeServiceHtml(service.service_type || '-') + '</td>' +
+      '<td>' + escapeServiceHtml(service.ports || '-') + '</td>' +
+      '<td><span class="service-status ' + statusClass(service.status) + '">' + escapeServiceHtml(service.status || '-') + '</span></td>' +
+      '<td>' + accounts + '</td>' +
+      '<td class="service-actions-cell">' +
+      '<button class="btn btn-sm btn-view" onclick="viewService(' + service.id + ')">查看</button> ' +
+      '<a class="btn btn-sm btn-primary" href="/services/' + service.id + '/edit">编辑</a> ' +
+      '<button class="btn btn-sm btn-danger" onclick="deleteService(' + service.id + ', this)">删除</button>' +
+      '</td></tr>');
+  }
+  tbody.innerHTML = rowsHtml.join('');
+}
+
+function serviceTagsHtml(names) {
+  if (!names || names === '无') return '<span class="empty-text">-</span>';
+  return names.split(', ').map(function (name) {
+    return '<span class="group-tag">' + escapeServiceHtml(name) + '</span>';
+  }).join('');
+}
+
+function statusClass(status) {
+  if (status === '运行中') return 'status-running';
+  if (status === '已停止') return 'status-stopped';
+  if (status === '已下线') return 'status-offline';
+  return 'status-unknown';
+}
+
+function resetServiceFilters() {
+  ['filterSystem', 'filterEnvironment', 'filterServiceType', 'filterStatus', 'serviceKeyword'].forEach(function (id) {
+    var element = document.getElementById(id);
+    if (element) element.value = '';
+  });
+  applyServiceFilters();
+}
+
+function initServiceListFilters() {
+  var tbody = document.getElementById('serviceTbody');
+  if (!tbody) return;
+  ['filterSystem', 'filterEnvironment', 'filterServiceType', 'filterStatus'].forEach(function (id) {
+    var element = document.getElementById(id);
+    if (element && element.dataset.filterBound !== '1') {
+      element.addEventListener('change', applyServiceFilters);
+      element.dataset.filterBound = '1';
+    }
+  });
+  var keywordInput = document.getElementById('serviceKeyword');
+  if (keywordInput && keywordInput.dataset.filterBound !== '1') {
+    keywordInput.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') { event.preventDefault(); applyServiceFilters(); }
+    });
+    keywordInput.dataset.filterBound = '1';
+  }
+  var searchButton = document.getElementById('serviceSearchBtn');
+  if (searchButton && searchButton.dataset.filterBound !== '1') {
+    searchButton.addEventListener('click', applyServiceFilters);
+    searchButton.dataset.filterBound = '1';
+  }
+  var resetButton = document.getElementById('serviceFilterReset');
+  if (resetButton && resetButton.dataset.filterBound !== '1') {
+    resetButton.addEventListener('click', resetServiceFilters);
+    resetButton.dataset.filterBound = '1';
+  }
+  applyServiceFilters();
+}
+
+async function viewService(serviceId) {
+  activeRevealServiceId = serviceId;
+  var overlay = document.getElementById('viewServiceOverlay');
+  var loading = document.getElementById('serviceDetailLoading');
+  var grid = document.getElementById('serviceDetailGrid');
+  if (!overlay) return;
+  overlay.style.display = 'flex';
+  loading.hidden = false;
+  loading.textContent = '正在加载服务信息…';
+  grid.hidden = true;
+  grid.innerHTML = '';
+  try {
+    var response = await fetch('/api/services/' + serviceId, {credentials: 'include'});
+    var data = await response.json();
+    if (!response.ok || !data.ok) throw new Error((data && data.msg) || '详情加载失败');
+    var s = data.service;
+    var items = [
+      ['服务名称', s.name], ['IP地址', s.ip], ['服务器', s.server_name], ['系统类型', s.os_type],
+      ['归属系统', s.system_names], ['归属环境', s.environment_names], ['服务类型', s.service_type],
+      ['运行方式', s.run_mode], ['版本号', s.version], ['服务状态', s.status],
+      ['是否开机自启', s.auto_start ? '是' : '否'], ['端口信息', s.ports], ['部署目录', s.deploy_dir],
+      ['配置文件路径', s.config_path], ['日志路径', s.log_path], ['访问地址', s.access_url],
+      ['负责人', s.owner], ['录入人', s.created_by], ['创建时间', s.created_at], ['更新时间', s.updated_at],
+      ['启动命令', s.start_command, true], ['停止命令', s.stop_command, true],
+      ['重启命令', s.restart_command, true], ['备注', s.notes || '-', true]
+    ];
+    for (var i = 0; i < items.length; i++) grid.appendChild(detailItem(items[i][0], items[i][1], items[i][2]));
+    document.getElementById('viewAccountSummary').textContent = s.account_count
+      ? '共 ' + s.account_count + ' 个（需验证后查看）' : '暂无账号';
+    document.getElementById('viewRevealBtn').disabled = !s.account_count;
+    loading.hidden = true;
+    grid.hidden = false;
+  } catch (error) {
+    loading.textContent = error.message || '详情加载失败';
+  }
+}
+
+function closeViewService() {
+  var overlay = document.getElementById('viewServiceOverlay');
+  if (overlay) overlay.style.display = 'none';
+  activeRevealServiceId = null;
+}
+
+async function deleteService(serviceId, button) {
+  var row = button && button.closest ? button.closest('tr') : null;
+  var name = row && row.dataset.serviceName ? row.dataset.serviceName : '';
+  if (!(await uiConfirm('确定要删除服务信息「' + name + '」吗？该服务下的账号信息会一并删除。',
+                        { type: 'error', okText: '删除' }))) return;
+  try {
+    var response = await fetch('/api/services?id=' + serviceId, {method: 'DELETE', credentials: 'include'});
+    var data = await response.json();
+    if (!response.ok || !data.ok) { await uiAlert('删除失败: ' + ((data && data.msg) || '未知错误'), 'error'); return; }
+    await uiAlert('删除成功', 'success');
+    location.reload();
+  } catch (error) {
+    await uiAlert('删除失败，请稍后重试', 'error');
+  }
+}
+
+/* ---------------- 服务表表单 ---------------- */
+function serviceValue(id) {
+  var element = document.getElementById(id);
+  return element ? element.value : '';
+}
+
+function checkedIds(name) {
+  var ids = [];
+  document.querySelectorAll('input[name="' + name + '"]:checked').forEach(function (checkbox) {
+    ids.push(parseInt(checkbox.value, 10));
+  });
+  return ids;
+}
+
+var ACCOUNT_ROW_SKELETON =
+  '<div class="account-row-item"><label class="account-row-label">用途</label>' +
+  '<input type="text" class="form-control account-purpose" maxlength="50" placeholder="如：应用账号"></div>' +
+  '<div class="account-row-item"><label class="account-row-label">账号</label>' +
+  '<input type="text" class="form-control account-username" maxlength="64" placeholder="如：appuser"></div>' +
+  '<div class="account-row-item account-row-narrow"><label class="account-row-label">类型</label>' +
+  '<select class="form-select account-secret-type">' +
+  '<option>密码</option><option>密钥</option><option>免密</option><option>其他</option>' +
+  '</select></div>' +
+  '<div class="account-row-item"><label class="account-row-label">密码</label>' +
+  '<input type="password" class="form-control account-password" autocomplete="new-password" placeholder="留空表示不修改"></div>' +
+  '<div class="account-row-item account-row-wide"><label class="account-row-label">备注</label>' +
+  '<input type="text" class="form-control account-remark" maxlength="200" placeholder="如：仅内网可用"></div>' +
+  '<button type="button" class="btn btn-sm btn-danger remove-account-row">删除</button>';
+
+function buildAccountRow(data) {
+  data = data || {};
+  var row = document.createElement('div');
+  row.className = 'account-row';
+  // 骨架不含任何用户数据，字段值一律通过 DOM 属性赋值，避免属性注入。
+  row.innerHTML = ACCOUNT_ROW_SKELETON;
+  row.querySelector('.account-purpose').value = data.purpose || '';
+  row.querySelector('.account-username').value = data.username || '';
+  row.querySelector('.account-secret-type').value = data.secret_type || '密码';
+  row.querySelector('.account-remark').value = data.remark || '';
+  row.querySelector('.account-password').value = '';
+  row.dataset.accountId = (data.id === 0 || data.id) ? String(data.id) : '';
+  return row;
+}
+
+function appendAccountRow(data) {
+  var container = document.getElementById('accountRows');
+  if (!container) return;
+  container.appendChild(buildAccountRow(data));
+}
+
+function collectAccountRows() {
+  var rows = document.querySelectorAll('#accountRows .account-row');
+  var accounts = [];
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    var purpose = row.querySelector('.account-purpose').value.trim();
+    var username = row.querySelector('.account-username').value.trim();
+    var password = row.querySelector('.account-password').value;
+    var remark = row.querySelector('.account-remark').value.trim();
+    if (!purpose && !username && !password && !remark) continue;
+    if (!username) throw new Error('第 ' + (i + 1) + ' 行账号未填写账号名');
+    var account = {
+      purpose: purpose,
+      username: username,
+      secret_type: row.querySelector('.account-secret-type').value,
+      password: password,
+      remark: remark
+    };
+    if (row.dataset.accountId) account.id = parseInt(row.dataset.accountId, 10);
+    accounts.push(account);
+  }
+  return accounts;
+}
+
+function collectServicePayload(includeAccounts) {
+  var payload = {
+    name: serviceValue('serviceName').trim(),
+    server_id: serviceValue('serviceServerId'),
+    service_type: serviceValue('serviceType'),
+    run_mode: serviceValue('serviceRunMode'),
+    version: serviceValue('serviceVersion').trim(),
+    deploy_dir: serviceValue('serviceDeployDir').trim(),
+    start_command: serviceValue('serviceStartCommand').trim(),
+    stop_command: serviceValue('serviceStopCommand').trim(),
+    restart_command: serviceValue('serviceRestartCommand').trim(),
+    ports: serviceValue('servicePorts').trim(),
+    config_path: serviceValue('serviceConfigPath').trim(),
+    log_path: serviceValue('serviceLogPath').trim(),
+    access_url: serviceValue('serviceAccessUrl').trim(),
+    owner: serviceValue('serviceOwner').trim(),
+    status: serviceValue('serviceStatus'),
+    auto_start: serviceValue('serviceAutoStart'),
+    notes: serviceValue('serviceNotes').trim(),
+    system_ids: checkedIds('serviceSystems'),
+    environment_ids: checkedIds('serviceEnvironments')
+  };
+  if (includeAccounts) payload.accounts = collectAccountRows();
+  return payload;
+}
+
+async function saveService() {
+  var isEdit = SERVICE_PAGE.mode === 'edit';
+  // 编辑时账号区未解锁则不提交 accounts 键，后端保持账号原状。
+  var includeAccounts = !isEdit || accountsUnlocked;
+  var payload;
+  try {
+    payload = collectServicePayload(includeAccounts);
+  } catch (error) {
+    await uiAlert(error.message, 'error');
+    return;
+  }
+  if (!payload.name) { await uiAlert('请输入服务名称', 'error'); return; }
+  if (!payload.server_id) { await uiAlert('请选择服务所属的服务器（IP地址）', 'error'); return; }
+  if (isEdit) payload.id = SERVICE_PAGE.serviceId;
+
+  var button = document.getElementById('saveServiceBtn');
+  var originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = '保存中…';
+  try {
+    var response = await fetch('/api/services', {
+      method: isEdit ? 'PUT' : 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+      credentials: 'include'
+    });
+    var data = await response.json();
+    if (!response.ok || !data.ok) { await uiAlert('保存失败: ' + ((data && data.msg) || '未知错误'), 'error'); return; }
+    await uiAlert(isEdit ? '服务信息已更新' : '服务表添加成功', 'success');
+    window.location.href = '/services';
+  } catch (error) {
+    await uiAlert('保存失败，请稍后重试', 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+function initServiceForm() {
+  var container = document.getElementById('accountRows');
+  if (!container) return;
+  if (container.dataset.bound !== '1') {
+    container.addEventListener('click', function (event) {
+      var button = event.target.closest ? event.target.closest('.remove-account-row') : null;
+      if (!button || !container.contains(button)) return;
+      var row = button.parentElement;
+      if (row && row.classList.contains('account-row')) row.remove();
+    });
+    container.dataset.bound = '1';
+  }
+  if (SERVICE_PAGE.mode === 'new' && !container.querySelector('.account-row')) {
+    container.appendChild(buildAccountRow({}));
+  }
+}
+
+/* ---------------- 归属字典管理 ---------------- */
+var SERVICE_DICT_ENDPOINTS = {
+  system: {url: '/api/service_systems', input: 'systemName', label: '系统项'},
+  environment: {url: '/api/service_environments', input: 'environmentName', label: '环境项'}
+};
+
+async function addServiceDict(kind) {
+  var config = SERVICE_DICT_ENDPOINTS[kind];
+  var input = document.getElementById(config.input);
+  var name = input ? input.value.trim() : '';
+  if (!name) { await uiAlert('请输入' + config.label + '名称', 'error'); return; }
+  try {
+    var response = await fetch(config.url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name: name}),
+      credentials: 'include'
+    });
+    var data = await response.json();
+    if (!response.ok || !data.ok) { await uiAlert('添加失败: ' + ((data && data.msg) || '未知错误'), 'error'); return; }
+    location.reload();
+  } catch (error) {
+    await uiAlert('添加失败，请稍后重试', 'error');
+  }
+}
+
+async function deleteServiceDict(kind, id, button) {
+  var config = SERVICE_DICT_ENDPOINTS[kind];
+  var item = button && button.closest ? button.closest('.group-item') : null;
+  var name = item && item.dataset.dictName ? item.dataset.dictName : '';
+  if (!(await uiConfirm('确定要删除' + config.label + '「' + name + '」吗？已关联的服务会取消该归属。',
+                        { type: 'error', okText: '删除' }))) return;
+  try {
+    var response = await fetch(config.url + '?id=' + id, {method: 'DELETE', credentials: 'include'});
+    var data = await response.json();
+    if (!response.ok || !data.ok) { await uiAlert('删除失败: ' + ((data && data.msg) || '未知错误'), 'error'); return; }
+    location.reload();
+  } catch (error) {
+    await uiAlert('删除失败，请稍后重试', 'error');
+  }
+}
+
+/* ---------------- 账号信息二次验证 ---------------- */
+function currentRevealServiceId() {
+  return activeRevealServiceId !== null ? activeRevealServiceId : SERVICE_PAGE.serviceId;
+}
+
+function openRevealDialog(onSuccess) {
+  var overlay = document.getElementById('revealOverlay');
+  if (!overlay) return;
+  revealSuccessHandler = onSuccess || null;
+  document.getElementById('revealForm').hidden = false;
+  document.getElementById('revealResult').hidden = true;
+  document.getElementById('revealResultBody').innerHTML = '';
+  document.getElementById('revealPassword').value = '';
+  showRevealError('');
+  overlay.style.display = 'flex';
+  document.getElementById('revealPassword').focus();
+}
+
+function showRevealError(message) {
+  var box = document.getElementById('revealError');
+  if (!box) return;
+  box.textContent = message || '';
+  box.hidden = !message;
+}
+
+function stopRevealCountdown() {
+  if (revealCountdownTimer) {
+    clearInterval(revealCountdownTimer);
+    revealCountdownTimer = null;
+  }
+}
+
+function hideRevealedSecrets(message) {
+  stopRevealCountdown();
+  var body = document.getElementById('revealResultBody');
+  if (body) body.innerHTML = '';
+  var result = document.getElementById('revealResult');
+  var form = document.getElementById('revealForm');
+  if (result) result.hidden = true;
+  if (form) form.hidden = false;
+  var countdown = document.getElementById('revealCountdown');
+  if (countdown) countdown.textContent = '';
+  showRevealError(message || '');
+}
+
+function closeRevealDialog() {
+  var overlay = document.getElementById('revealOverlay');
+  if (overlay) overlay.style.display = 'none';
+  hideRevealedSecrets('');
+  var password = document.getElementById('revealPassword');
+  if (password) password.value = '';
+  revealSuccessHandler = null;
+}
+
+function startRevealCountdown(seconds) {
+  stopRevealCountdown();
+  var label = document.getElementById('revealCountdown');
+  var remaining = seconds;
+  function tick() {
+    if (remaining <= 0) {
+      hideRevealedSecrets('账号信息已自动隐藏，如需查看请重新验证。');
+      return;
+    }
+    if (label) label.textContent = remaining + ' 秒后自动隐藏';
+    remaining -= 1;
+  }
+  tick();
+  revealCountdownTimer = setInterval(tick, 1000);
+}
+
+function renderRevealResult(accounts, expiresIn) {
+  var body = document.getElementById('revealResultBody');
+  body.innerHTML = '';
+  if (!accounts.length) {
+    var empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = '该服务暂未登记账号信息';
+    body.appendChild(empty);
+  } else {
+    var table = document.createElement('table');
+    table.className = 'data-table reveal-table';
+    var head = document.createElement('thead');
+    var headRow = document.createElement('tr');
+    ['用途', '账号', '类型', '密码', '备注'].forEach(function (title) {
+      var th = document.createElement('th');
+      th.textContent = title;
+      headRow.appendChild(th);
+    });
+    head.appendChild(headRow);
+    table.appendChild(head);
+
+    var tbody = document.createElement('tbody');
+    accounts.forEach(function (account) {
+      var row = document.createElement('tr');
+      row.appendChild(serviceTextCell(account.purpose));
+      row.appendChild(serviceTextCell(account.username));
+      row.appendChild(serviceTextCell(account.secret_type));
+      var passwordCell = document.createElement('td');
+      if (account.error) {
+        passwordCell.textContent = account.error;
+      } else if (account.password) {
+        var secret = document.createElement('span');
+        secret.className = 'reveal-secret';
+        secret.textContent = account.password;
+        var copyButton = document.createElement('button');
+        copyButton.type = 'button';
+        copyButton.className = 'btn btn-sm btn-view';
+        copyButton.textContent = '复制';
+        copyButton.addEventListener('click', function () { copyAccountPassword(account.password); });
+        passwordCell.appendChild(secret);
+        passwordCell.appendChild(copyButton);
+      } else {
+        passwordCell.textContent = '—';
+      }
+      row.appendChild(passwordCell);
+      row.appendChild(serviceTextCell(account.remark));
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    body.appendChild(table);
+  }
+  document.getElementById('revealForm').hidden = true;
+  document.getElementById('revealResult').hidden = false;
+  startRevealCountdown(expiresIn || 60);
+}
+
+async function copyAccountPassword(text) {
+  var copied = false;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    }
+  } catch (error) {
+    copied = false;
+  }
+  if (!copied) {
+    var helper = document.createElement('textarea');
+    helper.value = text;
+    helper.setAttribute('readonly', 'readonly');
+    helper.style.position = 'fixed';
+    helper.style.opacity = '0';
+    document.body.appendChild(helper);
+    helper.select();
+    try { copied = document.execCommand('copy'); } catch (error) { copied = false; }
+    document.body.removeChild(helper);
+  }
+  await uiAlert(copied ? '密码已复制到剪贴板，请注意剪贴板可能被其它程序读取。' : '复制失败，请手动选择文本复制',
+                copied ? 'success' : 'error');
+}
+
+async function submitReveal() {
+  var serviceId = currentRevealServiceId();
+  if (serviceId === null || serviceId === undefined) { showRevealError('未定位到服务信息'); return; }
+  var passwordInput = document.getElementById('revealPassword');
+  var password = passwordInput.value;
+  if (!password) { showRevealError('请输入当前登录密码'); return; }
+  var button = document.getElementById('revealSubmitBtn');
+  button.disabled = true;
+  button.textContent = '验证中…';
+  showRevealError('');
+  try {
+    var response = await fetch('/api/services/' + serviceId + '/accounts/reveal', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({password: password}),
+      credentials: 'include'
+    });
+    var data = await response.json();
+    passwordInput.value = '';
+    if (!response.ok || !data.ok) { showRevealError((data && data.msg) || '验证失败，请重试'); return; }
+    if (revealSuccessHandler) {
+      var handler = revealSuccessHandler;
+      revealSuccessHandler = null;
+      closeRevealDialog();
+      handler(data.accounts || []);
+      return;
+    }
+    renderRevealResult(data.accounts || [], data.expires_in);
+  } catch (error) {
+    showRevealError('验证请求失败，请稍后重试');
+  } finally {
+    button.disabled = false;
+    button.textContent = '验证并查看';
+  }
+}
+
+function unlockAccounts() {
+  openRevealDialog(function (accounts) {
+    var container = document.getElementById('accountRows');
+    if (!container) return;
+    container.innerHTML = '';
+    accounts.forEach(function (account) {
+      // 只回填账号元信息，明文密码不进入表单：留空即表示不修改。
+      container.appendChild(buildAccountRow({
+        id: account.id, purpose: account.purpose, username: account.username,
+        secret_type: account.secret_type, remark: account.remark
+      }));
+    });
+    if (!accounts.length) container.appendChild(buildAccountRow({}));
+    document.getElementById('accountLocked').hidden = true;
+    document.getElementById('accountRowsWrap').hidden = false;
+    accountsUnlocked = true;
+  });
+}
+
+/* ---------------- 生命周期 ---------------- */
+function initServicePage() {
+  if (SERVICE_PAGE.mode === 'list') initServiceListFilters();
+  else initServiceForm();
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initServicePage);
+else initServicePage();
+document.addEventListener('lingtu:page-load', initServicePage);
+document.addEventListener('lingtu:before-unmount', function () {
+  closeRevealDialog();
+  closeViewService();
+});
+
+window.applyServiceFilters = applyServiceFilters;
+window.resetServiceFilters = resetServiceFilters;
+window.viewService = viewService;
+window.closeViewService = closeViewService;
+window.deleteService = deleteService;
+window.saveService = saveService;
+window.appendAccountRow = appendAccountRow;
+window.addServiceDict = addServiceDict;
+window.deleteServiceDict = deleteServiceDict;
+window.openRevealDialog = openRevealDialog;
+window.closeRevealDialog = closeRevealDialog;
+window.submitReveal = submitReveal;
+window.hideRevealedSecrets = hideRevealedSecrets;
+window.unlockAccounts = unlockAccounts;
+</script>
+{% endblock %}

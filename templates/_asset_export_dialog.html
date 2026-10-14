@@ -1,0 +1,41 @@
+<div id="{{ export_dialog_id }}Overlay"
+     class="modal-overlay asset-export-overlay"
+     data-export-entity="{{ export_entity }}"
+     style="display:none;">
+  <div class="modal-content asset-export-modal">
+    <div class="modal-header">
+      <div class="asset-export-heading">
+        <span class="asset-export-heading-icon" aria-hidden="true">X</span>
+        <div><small>EXCEL 数据导出</small><h3>{{ export_dialog_title }}</h3></div>
+      </div>
+      <button type="button" class="modal-close" onclick="closeAssetExportDialog('{{ export_dialog_id }}')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="asset-export-notice">
+        导出范围为当前筛选结果。密码、私钥、口令等敏感凭据不会导出。
+      </div>
+      <div class="asset-export-toolbar">
+        <span>已选择 <strong id="{{ export_dialog_id }}Count">0</strong> 个字段</span>
+        <div>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="selectAssetExportFields('{{ export_dialog_id }}', true)">全选</button>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="selectAssetExportFields('{{ export_dialog_id }}', false)">取消全选</button>
+        </div>
+      </div>
+      <div class="asset-export-grid">
+        {% for field in export_fields %}
+        <label class="asset-export-option">
+          <input type="checkbox" value="{{ field.key }}" {% if field.default %}checked{% endif %}
+                 onchange="updateAssetExportCount('{{ export_dialog_id }}')">
+          <span>{{ field.label }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <div id="{{ export_dialog_id }}Error" class="asset-export-error" hidden></div>
+    </div>
+    <div class="modal-footer">
+      <span class="modal-footer-spacer"></span>
+      <button type="button" class="btn btn-secondary" onclick="closeAssetExportDialog('{{ export_dialog_id }}')">取消</button>
+      <button type="button" class="btn excel-submit-btn" onclick="submitAssetExport('{{ export_dialog_id }}')">生成并下载 Excel</button>
+    </div>
+  </div>
+</div>

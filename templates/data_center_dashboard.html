@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="dc-wall" id="dataCenterWall" data-health-interval="{{ server_health_interval }}">
+  <canvas class="dc-scene-canvas" id="dcSceneCanvas" aria-hidden="true"></canvas>
+  <div class="dc-ambient" aria-hidden="true"><i></i><i></i><i></i></div>
+
+  <header class="dc-header">
+    <div class="dc-brand">
+      <span class="tech-mark"><i></i><b></b></span>
+      <div><small>LINGTU · DIGITAL TWIN</small><strong>基础设施数字孪生中心</strong></div>
+    </div>
+    <div class="dc-title"><small>DATA CENTER OVERVIEW</small><h1>机房运行全景</h1><span></span></div>
+    <div class="dc-header-tools">
+      <div class="dc-clock"><strong id="dcTime">--:--:--</strong><span id="dcDate">----</span></div>
+      <button class="dc-icon-btn" id="dcRefreshBtn" type="button" title="立即刷新" aria-label="立即刷新"><span>↻</span></button>
+      <button class="dc-fullscreen-btn" id="dcFullscreenBtn" type="button"><i></i><span>全屏</span></button>
+    </div>
+  </header>
+
+  <section class="dc-toolbar">
+    <div class="dc-room-switcher" id="dcRoomSwitcher" role="tablist" aria-label="选择机房">
+      <span class="dc-room-loading">正在读取机房…</span>
+    </div>
+    <div class="dc-legend" aria-label="状态图例">
+      <span><i class="normal"></i>正常</span><span><i class="warning"></i>警告</span><span><i class="error"></i>报错</span>
+    </div>
+  </section>
+
+  <section class="dc-kpis">
+    <article><span class="dc-kpi-symbol">▤</span><div><small>机柜总数</small><strong id="dcRackCount">0</strong></div><em>RACKS</em></article>
+    <article><span class="dc-kpi-symbol normal">●</span><div><small>正常服务器</small><strong id="dcNormalCount">0</strong></div><em>NORMAL</em></article>
+    <article><span class="dc-kpi-symbol warning">▲</span><div><small>警告服务器</small><strong id="dcWarningCount">0</strong></div><em>WARNING</em></article>
+    <article><span class="dc-kpi-symbol error">◆</span><div><small>报错服务器</small><strong id="dcErrorCount">0</strong></div><em>ERROR</em></article>
+  </section>
+
+  <section class="dc-stage">
+    <aside class="dc-side-panel dc-room-panel">
+      <div class="dc-panel-title"><div><small>ROOM PROFILE</small><h2>机房概览</h2></div><span class="dc-live"><i></i>LIVE</span></div>
+      <div class="dc-room-identity"><span>当前机房</span><strong id="dcRoomName">正在读取机房…</strong><small id="dcRoomSubline">资产全景</small></div>
+      <div class="dc-health-gauge" id="dcHealthGauge"><div><strong id="dcHealthRate">0</strong><span>%</span><small>健康率</small></div></div>
+      <dl class="dc-room-stats">
+        <div><dt>物理机总数</dt><dd id="dcServerCount">0</dd></div>
+        <div><dt>已上架物理机</dt><dd id="dcMountedCount">0</dd></div>
+        <div><dt>未标注机柜</dt><dd id="dcUnassignedCount">0</dd></div>
+      </dl>
+      <div class="dc-probe-note"><i></i><span>探测周期 {{ server_health_interval // 60 }} 分钟<br>连续 {{ server_offline_minutes }} 分钟失败标记报错</span></div>
+    </aside>
+
+    <div class="dc-cabinet-zone">
+      <div class="dc-zone-head">
+        <div><small>3D RACK MATRIX</small><h2>机柜实时视图</h2></div>
+        <div class="dc-view-tools"><span class="dc-orbit-badge">360°</span><button type="button" id="dcAutoView" class="active"><i></i><span id="dcAutoViewLabel">自动巡航</span></button><button type="button" id="dcResetView">复位视角</button><button type="button" id="dcEditView">编辑视角</button></div>
+      </div>
+      <div class="dc-perspective">
+        <div class="dc-layout-editor" id="dcLayoutEditor" hidden><span><strong id="dcLayoutRoomName">当前机房</strong> · <b id="dcLayoutRowCount">1</b> 排</span><em>A排为最前排 · 拖动机柜排序 · 空白处整体移动</em><button type="button" id="dcAddRackRow">＋ 新增一排</button></div>
+        <div class="dc-room-environment" aria-hidden="true">
+          <span class="dc-room-bus"></span>
+          <span class="dc-room-light dc-room-light-one"></span>
+          <span class="dc-room-light dc-room-light-two"></span>
+          <span class="dc-room-light dc-room-light-three"></span>
+          <span class="dc-wall-module dc-wall-module-left"><i>POWER BUS</i><b></b><b></b><b></b></span>
+          <span class="dc-wall-module dc-wall-module-right"><i>COOLING LOOP</i><b></b><b></b><b></b></span>
+          <span class="dc-room-column dc-room-column-left"></span>
+          <span class="dc-room-column dc-room-column-right"></span>
+        </div>
+        <div class="dc-holo-beams" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="dc-ceiling-lines" aria-hidden="true"></div>
+        <div class="dc-stage-fx" aria-hidden="true">
+          <span class="dc-orbit-ring dc-orbit-ring-a"></span>
+          <span class="dc-orbit-ring dc-orbit-ring-b"></span>
+          <span class="dc-flow-rail dc-flow-rail-left"><i></i><i></i><i></i></span>
+          <span class="dc-flow-rail dc-flow-rail-right"><i></i><i></i><i></i></span>
+        </div>
+        <div class="dc-rack-scroll" id="dcRackScroll">
+          <canvas class="dc-rack-canvas" id="dcRackCanvas" aria-label="三维机柜矩阵，普通视角支持旋转，编辑视角支持机柜排序与整体移动"></canvas>
+          <div class="dc-rack-grid" id="dcRackGrid" aria-hidden="true"></div>
+        </div>
+        <div class="dc-floor" aria-hidden="true"></div>
+        <div class="dc-empty" id="dcEmpty" hidden><span>◇</span><strong>当前机房暂无物理机</strong><small>仅展示资源类型明确为“物理机”的设备，请设置机房与机柜编号</small></div>
+      </div>
+      <div class="dc-scroll-guide" id="dcScrollGuide" hidden><span>横向滚动查看更多机柜</span><i></i></div>
+    </div>
+
+    <aside class="dc-side-panel dc-alert-panel">
+      <div class="dc-panel-title"><div><small>EVENT STREAM</small><h2>实时告警</h2></div><b id="dcAlertBadge">0</b></div>
+      <div class="dc-alert-list" id="dcAlertList"><div class="dc-panel-loading">正在同步运行状态…</div></div>
+      <div class="dc-alert-footer"><i></i><span id="dcUpdatedAt">等待首次同步</span></div>
+    </aside>
+  </section>
+
+  <footer class="dc-footer"><span><i></i> HEALTH MONITOR ACTIVE</span><span>点击服务器查看详情 · 编辑视角调整机柜排布</span><span>SSH PROBE / AES SECURED</span></footer>
+
+  <div class="dc-server-popover" id="dcServerPopover" hidden role="dialog" aria-modal="true" aria-labelledby="dcDetailName">
+    <button type="button" id="dcDetailClose" aria-label="关闭">×</button>
+    <div class="dc-detail-status" id="dcDetailStatus"><i></i><span>正常</span></div>
+    <small>SERVER ASSET</small><h3 id="dcDetailName">-</h3>
+    <dl>
+      <div><dt>物理机IP</dt><dd id="dcDetailAddress">-</dd></div>
+      <div><dt>机房</dt><dd id="dcDetailRoom">-</dd></div>
+      <div><dt>机柜 / U位</dt><dd id="dcDetailRack">-</dd></div>
+      <div><dt>资源类型</dt><dd id="dcDetailType">-</dd></div>
+      <div><dt>最近在线</dt><dd id="dcDetailLastSeen">-</dd></div>
+    </dl>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/data-center-dashboard.js?v=29"></script>{% endblock %}

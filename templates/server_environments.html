@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">新增环境项</h1>
+  <p class="page-subtitle">维护服务器所属环境，供新增服务器和服务信息表归属环境统一使用</p>
+</div>
+
+<div class="row server-management-row">
+  <div class="col-lg-5 group-section">
+    <div class="card group-card">
+      <div class="card-header">
+        <div class="card-icon">🌐</div>
+        <h3 class="card-title">新增环境项</h3>
+      </div>
+      <div class="card-body">
+        <div class="form-group">
+          <label class="form-label">环境项名称</label>
+          <div class="input-group">
+            <input type="text" id="environmentName" class="form-control" placeholder="例如：生产环境">
+            <button class="btn btn-primary" id="addEnvironmentBtn" onclick="addEnvironmentItem()">添加</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7 server-section">
+    <div class="card list-card">
+      <div class="card-header">
+        <div class="card-icon">🧭</div>
+        <h3 class="card-title">环境项列表</h3>
+      </div>
+      <div class="card-body">
+        <div class="group-list">
+          {% for item in environments %}
+          <div class="group-item" data-dict-name="{{ item.name }}">
+            <span class="group-name">{{ item.name }}</span>
+            <button class="btn btn-sm btn-danger" onclick="deleteEnvironmentItem({{ item.id }}, this)">删除</button>
+          </div>
+          {% endfor %}
+          {% if not environments %}
+          <div class="empty-state">暂无环境项</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function addEnvironmentItem() {
+  var input = document.getElementById('environmentName');
+  var button = document.getElementById('addEnvironmentBtn');
+  var name = input ? input.value.trim() : '';
+  if (!name) { await uiAlert('请输入环境项名称', 'error'); return; }
+  var originalText = button ? button.textContent : '';
+  if (button) { button.disabled = true; button.textContent = '添加中...'; }
+  try {
+    var response = await fetch('/api/service_environments', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name: name}),
+      credentials: 'include'
+    });
+    var data = await response.json();
+    if (!response.ok || !data.ok) { await uiAlert('添加失败: ' + ((data && data.msg) || '未知错误'), 'error'); return; }
+    location.reload();
+  } catch (error) {
+    await uiAlert('添加失败，请稍后重试', 'error');
+  } finally {
+    if (button) { button.disabled = false; button.textContent = originalText; }
+  }
+}
+
+async function deleteEnvironmentItem(id, button) {
+  var item = button && button.closest ? button.closest('.group-item') : null;
+  var name = item && item.dataset.dictName ? item.dataset.dictName : '';
+  if (!(await uiConfirm('确定要删除环境项「' + name + '」吗？已关联的服务器和服务会取消该归属。',
+                        { type: 'error', okText: '删除' }))) return;
+  try {
+    var response = await fetch('/api/service_environments?id=' + id, {method: 'DELETE', credentials: 'include'});
+    var data = await response.json();
+    if (!response.ok || !data.ok) { await uiAlert('删除失败: ' + ((data && data.msg) || '未知错误'), 'error'); return; }
+    location.reload();
+  } catch (error) {
+    await uiAlert('删除失败，请稍后重试', 'error');
+  }
+}
+</script>
+{% endblock %}

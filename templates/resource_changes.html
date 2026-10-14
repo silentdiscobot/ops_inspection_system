@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header resource-page-header resource-page-hero">
+  <div>
+    <span class="resource-page-eyebrow">运维变更单</span>
+    <h1 class="page-title">资源变更表</h1>
+    <p class="page-subtitle">集中处理资源变化、安排计划变更，并维护服务器配置基线</p>
+  </div>
+  <button type="button" class="btn btn-primary resource-primary-action" onclick="resourceOpenPlan()"><span aria-hidden="true">＋</span> 登记计划变更</button>
+</div>
+
+<div class="resource-summary" id="resourceSummary">
+  <article class="resource-summary-card resource-summary-alert">
+    <div class="resource-summary-icon" aria-hidden="true">!</div>
+    <div><span>待确认变化</span><strong id="resourcePendingCount">0</strong><small>需要人工核验和处理</small></div>
+  </article>
+  <article class="resource-summary-card resource-summary-plan">
+    <div class="resource-summary-icon" aria-hidden="true">◷</div>
+    <div><span>待执行计划</span><strong id="resourcePlanCount">0</strong><small>当前有效的变更计划</small></div>
+  </article>
+  <article class="resource-summary-card resource-summary-baseline">
+    <div class="resource-summary-icon" aria-hidden="true">✓</div>
+    <div><span>配置基线</span><strong id="resourceBaselineCount">0</strong><small>已纳入配置管理的服务器</small></div>
+  </article>
+</div>
+
+<section class="card resource-section-card resource-workbench-card resource-section-priority" id="resourcePendingSection">
+  <div class="resource-section-header">
+    <div class="resource-section-title">
+      <div class="resource-section-icon resource-section-icon-danger">!</div>
+      <div><h2>待确认变化</h2><p>请核对巡检发现的硬件变化，并填写确认理由后处理。</p></div>
+    </div>
+    <span class="resource-section-count" id="resourceEventTotal">0 项待处理</span>
+  </div>
+  <div class="card-body table-wrapper">
+    <table class="data-table resource-table">
+      <thead><tr><th>服务器</th><th>检测到的变化</th><th>当前状态</th><th>发现时间</th><th class="resource-action-column">确认理由与操作</th></tr></thead>
+      <tbody id="resourceEventRows"><tr><td colspan="5" class="empty-row">正在加载…</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card resource-section-card resource-workbench-card" id="resourcePlanSection">
+  <div class="resource-section-header">
+    <div class="resource-section-title">
+      <div class="resource-section-icon resource-section-icon-warn">◷</div>
+      <div><h2>计划变更</h2><p>在维护窗口前登记预期配置，巡检结果会自动与计划匹配。</p></div>
+    </div>
+    <span class="resource-section-count" id="resourcePlanTotal">0 项计划</span>
+  </div>
+  <div class="card-body table-wrapper">
+    <table class="data-table resource-table">
+      <thead><tr><th>服务器</th><th>目标配置</th><th>维护窗口</th><th>变更说明</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody id="resourcePlanRows"><tr><td colspan="6" class="empty-row">正在加载…</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card resource-section-card resource-workbench-card" id="resourceBaselineSection">
+  <div class="resource-section-header">
+    <div class="resource-section-title">
+      <div class="resource-section-icon resource-section-icon-ok">✓</div>
+      <div><h2>当前配置基线</h2><p>展示最近一次人工确认后的服务器硬件配置。</p></div>
+    </div>
+    <span class="resource-section-count" id="resourceBaselineTotal">0 台服务器</span>
+  </div>
+  <div class="card-body table-wrapper">
+    <table class="data-table resource-table">
+      <thead><tr><th>服务器</th><th>CPU</th><th>内存</th><th>磁盘总容量</th><th>物理磁盘</th><th>挂载点</th><th>基线版本</th></tr></thead>
+      <tbody id="resourceBaselineRows"><tr><td colspan="7" class="empty-row">正在加载…</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<div class="modal-overlay resource-plan-overlay" id="resourcePlanOverlay" hidden>
+  <div class="modal-content resource-plan-modal">
+    <div class="modal-header resource-plan-modal-header">
+      <div><span class="resource-page-eyebrow">计划变更</span><h3 id="resourcePlanTitle">登记计划变更</h3><p>登记维护窗口和变更后的目标配置，便于巡检自动识别。</p></div>
+      <button type="button" class="modal-close" onclick="resourceClosePlan()" aria-label="关闭">×</button>
+    </div>
+    <form id="resourcePlanForm" onsubmit="resourceSavePlan(event)">
+      <input type="hidden" id="resourcePlanId">
+      <section class="resource-form-section">
+        <div class="resource-form-section-title"><span>1</span><div><h4>基本信息</h4><p>选择服务器并设置计划生效时间。</p></div></div>
+        <div class="resource-form-grid resource-form-grid-basic">
+          <div class="form-group"><label class="form-label">服务器 <em>*</em></label><select id="resourcePlanServer" class="form-select" required onchange="resourceFillBaseline()"></select></div>
+          <div class="form-group"><label class="form-label">变更单号（自动生成）</label><input id="resourcePlanTicket" class="form-control resource-generated-input" maxlength="100" readonly aria-readonly="true"><div class="form-hint">格式：CHG-年月日时分秒</div></div>
+          <div class="form-group"><label class="form-label">开始时间 <em>*</em></label><input id="resourcePlanStart" type="datetime-local" class="form-control" required></div>
+          <div class="form-group"><label class="form-label">结束时间 <em>*</em></label><input id="resourcePlanEnd" type="datetime-local" class="form-control" required></div>
+        </div>
+      </section>
+
+      <section class="resource-form-section">
+        <div class="resource-form-section-title"><span>2</span><div><h4>目标配置</h4><p>默认带入当前基线，请填写变更完成后的配置。</p></div></div>
+        <div class="resource-form-grid resource-form-grid-config">
+          <div class="form-group"><label class="form-label">CPU</label><input id="resourcePlanCpu" class="form-control" placeholder="例如 8 核"></div>
+          <div class="form-group"><label class="form-label">内存</label><input id="resourcePlanMemory" class="form-control" placeholder="例如 32 GB"></div>
+          <div class="form-group"><label class="form-label">磁盘总容量</label><input id="resourcePlanStorage" class="form-control" placeholder="例如 2 TB"></div>
+          <div class="form-group"><label class="form-label">物理磁盘数 <em>*</em></label><input id="resourcePlanDisks" type="number" min="0" max="600" class="form-control" required></div>
+          <div class="form-group"><label class="form-label">挂载点数 <em>*</em></label><input id="resourcePlanMountCount" type="number" min="0" max="300" class="form-control" required></div>
+        </div>
+      </section>
+
+      <section class="resource-form-section">
+        <div class="resource-form-section-title"><span>3</span><div><h4>变更说明</h4><p>说明本次调整的原因，便于后续追溯。</p></div></div>
+        <div class="form-group resource-reason-field"><label class="form-label">变更理由 <em>*</em></label><textarea id="resourcePlanReason" class="form-control" rows="3" maxlength="500" required placeholder="请简要说明变更原因和影响范围"></textarea></div>
+      </section>
+      <div class="resource-plan-actions"><button type="button" class="btn btn-secondary" onclick="resourceClosePlan()">取消</button><button type="submit" class="btn btn-primary">保存计划变更</button></div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/resource-changes.js?v=6"></script>{% endblock %}

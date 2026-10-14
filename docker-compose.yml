@@ -1,0 +1,55 @@
+services:
+  ops-inspection:
+    image: ops-inspection-new:v1.1
+    pull_policy: never
+    container_name: ops-inspection
+    init: true
+    ports:
+      - "${OPS_BIND_ADDRESS:-0.0.0.0}:${OPS_PUBLISHED_PORT:-1999}:1999"
+
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+      - ./skills:/app/skills
+
+    environment:
+      TZ: Asia/Shanghai
+      OPS_HOST: 0.0.0.0
+      OPS_PORT: "1999"
+      OPS_DEBUG: "0"
+      OPS_SECRET_KEY: "${OPS_SECRET_KEY:-}"
+      OPS_ADMIN_PASSWORD: "${OPS_ADMIN_PASSWORD:-Admin@123}"
+      OPS_AES_KEY_FILE: /app/data/.ops_aes_key
+      OPS_SSH_STRICT_HOST_KEY: "${OPS_SSH_STRICT_HOST_KEY:-0}"
+      OPS_QUEUE_WORKERS: "${OPS_QUEUE_WORKERS:-2}"
+      OPS_QUEUE_RETRY_DELAY: "${OPS_QUEUE_RETRY_DELAY:-10}"
+      OPS_SERVER_HEALTH_INTERVAL: "${OPS_SERVER_HEALTH_INTERVAL:-600}"
+      OPS_CPU_THRESHOLD: "${OPS_CPU_THRESHOLD:-80}"
+      OPS_MEM_THRESHOLD: "${OPS_MEM_THRESHOLD:-80}"
+      OPS_DISK_THRESHOLD: "${OPS_DISK_THRESHOLD:-80}"
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:1999/login', timeout=5)"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    restart: always
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    cpus: "${OPS_CONTAINER_CPUS:-2.0}"
+    mem_limit: "${OPS_CONTAINER_MEMORY:-1g}"
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
