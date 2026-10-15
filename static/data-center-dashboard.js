@@ -750,6 +750,6 @@
     disposed = true; clearInterval(clockTimer); clearInterval(statusTimer); if (sceneFrame) cancelAnimationFrame(sceneFrame); document.removeEventListener('fullscreenchange', syncFullscreen);
   }, {once:true});
   setupSceneControls(); applySceneView(); drawScene();
-  var healthRefreshMs=Math.max(60000,Number(byId('dataCenterWall').dataset.healthInterval||600)*1000);
+  var healthRefreshMs=Math.max(60000,Number(byId('dataCenterWall').dataset.healthInterval||300)*1000);
   updateClock(); clockTimer = setInterval(updateClock, 1000); fetchStatus(); statusTimer = setInterval(fetchStatus, healthRefreshMs);
 }());

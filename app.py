@@ -80,7 +80,7 @@ def _read_positive_int_env(name, default):
         return default
 
 
-SERVER_HEALTH_INTERVAL = _read_positive_int_env("OPS_SERVER_HEALTH_INTERVAL", 10 * 60)
+SERVER_HEALTH_INTERVAL = _read_positive_int_env("OPS_SERVER_HEALTH_INTERVAL", 5 * 60)
 SERVER_OFFLINE_AFTER = max(
     _read_positive_int_env("OPS_SERVER_OFFLINE_AFTER", SERVER_HEALTH_INTERVAL * 2),
     SERVER_HEALTH_INTERVAL + 30,

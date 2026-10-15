@@ -101,6 +101,6 @@
     document.removeEventListener('fullscreenchange', syncFullscreenButton);
   }, {once:true});
   clock(); clockTimer = setInterval(clock,1000);
-  var healthRefreshMs=Math.max(60000,Number(document.getElementById('opsWall').dataset.healthInterval||600)*1000);
+  var healthRefreshMs=Math.max(60000,Number(document.getElementById('opsWall').dataset.healthInterval||300)*1000);
   fetchStatus(); statusTimer = setInterval(fetchStatus,healthRefreshMs); draw();
 }());
