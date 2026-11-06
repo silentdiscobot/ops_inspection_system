@@ -1630,8 +1630,9 @@ class ServerHardwareSnapshotTests(unittest.TestCase):
         self.assertEqual(models.get_server_hardware(self.other_server_id)["cpu"], "16 核")
 
     def test_main_wires_the_background_check_thread(self):
-        """后台核对线程只在 main() 里启动，漏掉这行参数就再也不会自动更新。"""
-        self.assertIn("start_server_hardware_monitor()", inspect.getsource(app.main))
+        """main() 通过共享运行时初始化启动硬件监控。"""
+        self.assertIn("initialize_runtime()", inspect.getsource(app.main))
+        self.assertIn("start_server_hardware_monitor()", inspect.getsource(app.initialize_runtime))
 
     @patch("app.collect_server_hardware")
     def test_changing_connection_target_drops_the_record(self, collect):
@@ -2852,7 +2853,7 @@ class AiProviderTests(AiTestBase):
         ]
 
         self.login("operator")
-        self.assertEqual(self.client.get("/api/ai/providers").status_code, 200)
+        self.assertEqual(self.client.get("/api/ai/providers").status_code, 403)
         self.assertEqual(self.client.get("/api/ai/providers?full=1").status_code, 403)
         for method, path, payload in mutating:
             response = self.client.open(path, method=method, json=payload or {},
@@ -2860,7 +2861,7 @@ class AiProviderTests(AiTestBase):
             self.assertEqual(response.status_code, 403, f"operator {method} {path}")
 
         self.login("viewer")
-        self.assertEqual(self.client.get("/api/ai/providers").status_code, 403)
+        self.assertEqual(self.client.get("/api/ai/providers").status_code, 200)
         self.assertEqual(self.client.get("/api/ai/providers?full=1").status_code, 403)
         for method, path, payload in mutating:
             response = self.client.open(path, method=method, json=payload or {},
@@ -5296,6 +5297,123 @@ class ConversationAuditTests(AiTestBase):
         self.login("operator")
         self.assertEqual(self.client.get("/api/ai/conversation-audits").status_code, 403)
         self.assertEqual(self.client.get("/ai/conversation-audit").status_code, 403)
+
+
+class ProductRoleMatrixTests(AiTestBase):
+    def setUp(self):
+        super().setUp()
+        for role in ['dashboard_viewer', 'asset_manager']:
+            models.add_user(role, app.hash_password('Admin123'), role=role)
+
+    def test_forbidden_routes_are_blocked_for_every_limited_role(self):
+        from role_policy import can_access
+        for role in ['dashboard_viewer', 'asset_manager', 'viewer']:
+            self.login(role)
+            for rule in app.app.url_map.iter_rules():
+                path = re.sub(r'<(?:[^:>]+:)?[^>]+>', '1', rule.rule)
+                if path in ['/login', '/api/login', '/api/captcha'] or rule.endpoint == 'static':
+                    continue
+                for method in rule.methods - {'OPTIONS', 'HEAD'}:
+                    if can_access(role, path, method):
+                        continue
+                    with self.subTest(role=role, path=path, method=method):
+                        response = self.client.open(path, method=method, json={}, headers={'X-CSRFToken': 'test-csrf-token'})
+                        self.assertEqual(response.status_code, 403)
+
+    def test_allowed_pages_and_menus(self):
+        cases = {'dashboard_viewer': ['/dashboard/server-status', '/dashboard/data-center'],
+                 'asset_manager': ['/servers', '/services', '/servers-new', '/server-environments', '/services-new', '/service-systems'],
+                 'viewer': ['/reports', '/ai/insights']}
+        for role, pages in cases.items():
+            self.login(role)
+            for path in ['/'] + pages:
+                with self.subTest(role=role, path=path):
+                    self.assertEqual(self.client.get(path).status_code, 200)
+            html = self.client.get('/').get_data(as_text=True)
+            self.assertNotIn('href="/server_inspect"', html)
+            self.assertNotIn('href="/ai/chat"', html)
+            self.assertEqual('href="/reports"' in html, role == 'viewer')
+
+    def test_limited_roles_can_refresh_captcha_and_open_login(self):
+        for role in ['dashboard_viewer', 'asset_manager', 'viewer']:
+            self.login(role)
+            with self.subTest(role=role):
+                self.assertNotEqual(self.client.get('/login').status_code, 403)
+                self.assertEqual(self.client.get('/api/captcha').status_code, 200)
+
+    def test_report_reader_cannot_read_or_cancel_old_chat_stream(self):
+        stream = ai_service._Stream('role-chat', 'chat', 'viewer', 'operator')
+        ai_service._register(stream)
+        for operation in [lambda: ai_service.read_stream('role-chat', 0, 'viewer', 'viewer'),
+                          lambda: ai_service.request_cancel('role-chat', 'viewer', 'viewer')]:
+            with self.assertRaises(ai_service.AiServiceError) as error:
+                operation()
+            self.assertEqual(error.exception.status, 403)
+
+    def test_report_reader_can_request_insight_without_chat(self):
+        self.login('viewer')
+        with patch.object(ai_service, 'start_insight', return_value={'ok': True}) as start:
+            response = self.client.post('/api/ai/insights', json={'run_id': 'test'}, headers={'X-CSRFToken': 'test-csrf-token'})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(start.call_args.args[2], 'viewer')
+        self.assertEqual(self.client.get('/api/ai/providers').status_code, 200)
+        self.assertEqual(self.client.post('/api/ai/conversations', json={}, headers={'X-CSRFToken': 'test-csrf-token'}).status_code, 403)
+
+
+class AccountRevocationSecurityTests(AiTestBase):
+    def test_demoted_admin_cannot_keep_cookie_privileges(self):
+        user = models.get_user('admin')
+        models.update_user(user['id'], 'admin', None, '', 'viewer', '')
+        self.assertEqual(self.client.get('/users').status_code, 403)
+        self.assertEqual(self.client.get('/api/users').get_json(), [])
+
+    def test_deleted_account_cannot_keep_session(self):
+        self.login('operator')
+        user = models.get_user('operator')
+        models.delete_user(user['id'])
+        self.assertEqual(self.client.get('/api/servers').status_code, 401)
+
+
+class WholeSystemPageSmokeTests(AiTestBase):
+    def test_all_static_get_routes_render_without_server_errors(self):
+        routes = sorted({rule.rule for rule in app.app.url_map.iter_rules()
+                         if 'GET' in rule.methods and not rule.arguments})
+        for role in ['admin', 'operator', 'viewer']:
+            self.login(role)
+            for path in routes:
+                with self.subTest(role=role, path=path):
+                    response = self.client.get(path)
+                    self.assertLess(response.status_code, 500)
+        self.client.post('/api/logout', headers={'X-CSRFToken': 'test-csrf-token'})
+        with self.client.session_transaction() as session:
+            session.clear()
+        for path in routes:
+            if path in ['/login', '/api/captcha']:
+                continue
+            with self.subTest(role='anonymous', path=path):
+                response = self.client.get(path)
+                self.assertIn(response.status_code, [301, 302, 401, 403, 404])
+
+
+class JsonBodyBoundaryTests(unittest.TestCase):
+    def test_non_object_json_is_rejected_before_handlers(self):
+        with app.app.test_client() as client:
+            with client.session_transaction() as session:
+                session['csrf_token'] = 'boundary-token'
+            for path in ['/api/login', '/api/update_password', '/api/servers', '/api/services', '/api/save_task', '/api/ai/conversations']:
+                for payload in [None, [], [1], 'text', 42, True]:
+                    with self.subTest(path=path, payload=payload):
+                        response = client.post(path, data=json.dumps(payload), content_type='application/json', headers={'X-CSRFToken': 'boundary-token'})
+                        self.assertEqual(response.status_code, 400)
+
+
+class CsrfHeaderBoundaryTests(unittest.TestCase):
+    def test_non_ascii_csrf_header_is_rejected(self):
+        with app.app.test_client() as client:
+            with client.session_transaction() as session:
+                session['csrf_token'] = 'expected-token'
+            response = client.post('/api/logout', headers={'X-CSRFToken': '\u00e9'})
+            self.assertEqual(response.status_code, 403)
 
 
 if __name__ == "__main__":

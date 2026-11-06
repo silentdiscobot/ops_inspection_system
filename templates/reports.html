@@ -8,7 +8,7 @@
 <div class="report-section">
   <div class="report-section-head">
     <h2 class="section-title">📋 报告列表</h2>
-    <a href="/ai?panel=insight" class="btn btn-outline btn-sm"><img src="/static/images/logo-robot.png" alt="" class="ai-logo-icon" aria-hidden="true"> AI 解读巡检结果</a>
+    <a href="/ai/insights" class="btn btn-outline btn-sm"><img src="/static/images/logo-robot.png" alt="" class="ai-logo-icon" aria-hidden="true"> AI 解读巡检结果</a>
   </div>
   <div class="report-list" id="report-list">
     <div class="loading">加载报告列表中...</div>
@@ -18,6 +18,12 @@
 <script>
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadReports);
 else loadReports();
+
+function escapeReportText(value) {
+  var node = document.createElement('span');
+  node.textContent = value == null ? '' : String(value);
+  return node.innerHTML;
+}
 
 function loadReports() {
   axios.get('/api/reports')
@@ -38,12 +44,14 @@ function loadReports() {
         var ext = report.filename.split('.').pop().toUpperCase();
         var icon = ext === 'PDF' ? '📄' : '📊';
         html += '<tr>';
-        html += '<td><span class="file-icon">' + icon + '</span><a href="/api/preview_report/' + encodeURIComponent(report.filename) + '" target="_blank" class="report-link">' + report.filename + '</a></td>';
+        html += '<td><span class="file-icon">' + icon + '</span><a href="/api/preview_report/' + encodeURIComponent(report.filename) + '" target="_blank" class="report-link">' + escapeReportText(report.filename) + '</a></td>';
         html += '<td><span class="format-badge">' + ext + '</span></td>';
-        html += '<td>' + report.mtime + '</td>';
+        html += '<td>' + escapeReportText(report.mtime) + '</td>';
         html += '<td>';
         html += '<a href="/download/' + encodeURIComponent(report.filename) + '" class="download-btn">下载</a>';
-        html += '<button class="delete-btn" onclick="deleteReport(\'' + encodeURIComponent(report.filename) + '\')">删除</button>';
+        {% if current_user.role == 'admin' %}
+        html += '<button class="delete-btn" onclick="deleteReport(\'' + encodeURIComponent(report.filename).replace(/'/g, '%27') + '\')">删除</button>';
+        {% endif %}
         html += '</td>';
         html += '</tr>';
       });

@@ -3,6 +3,7 @@ import os, logging, sqlite3, threading, time, hashlib, hmac, re, secrets, json, 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from functools import wraps
+from role_policy import ROLE_LABELS, normalize_role, can_access
 from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, make_response
 from flask_socketio import SocketIO
 from werkzeug.serving import WSGIRequestHandler
@@ -101,11 +102,7 @@ _server_health_thread = None
 _server_health_thread_lock = threading.Lock()
 
 # 角色定义
-ROLES = {
-    'admin': '超级管理员',
-    'operator': '系统操作员',
-    'viewer': '报告查看员'
-}
+ROLES = ROLE_LABELS
 
 class CurrentUser:
     """当前用户上下文"""
@@ -284,7 +281,7 @@ def role_required(roles):
             if 'role' not in session:
                 return redirect(url_for('login_page'))
             user_role = session['role']
-            if user_role not in roles:
+            if user_role not in roles and not can_access(user_role, request.path, request.method):
                 return jsonify({'success': False, 'message': '权限不足'}), 403
             return f(*args, **kwargs)
         return decorated_function
@@ -294,7 +291,8 @@ def role_required(roles):
 def inject_user():
     """向模板注入当前用户信息"""
     user = CurrentUser().from_session()
-    return {'current_user': user, 'csrf_token': session.get('csrf_token', '')}
+    return {'current_user': user, 'csrf_token': session.get('csrf_token', ''),
+            'can_access': lambda path: can_access(session.get('role'), path)}
 
 
 SERVICE_STATUS_CLASSES = {
@@ -312,6 +310,16 @@ def inject_service_helpers():
 @app.before_request
 def enforce_request_security():
     if 'username' in session:
+        # Roles in signed cookies can outlive account deletion or demotion.
+        current_account = get_user(session['username'])
+        if not current_account:
+            session.clear()
+            if request.path.startswith('/api/'):
+                return jsonify({'success': False, 'message': '登录已失效，请重新登录'}), 401
+            return redirect(url_for('login_page'))
+        session['role'] = normalize_role(current_account['role'])
+        if not can_access(session['role'], request.path, request.method) and request.endpoint != 'static':
+            return jsonify({'success': False, 'message': '权限不足'}), 403
         now = time.time()
         last_activity_at = float(session.get('last_activity_at', now))
         if now - last_activity_at > SESSION_IDLE_SECONDS:
@@ -326,8 +334,13 @@ def enforce_request_security():
     if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'} and request.endpoint != 'api_login':
         supplied = request.headers.get('X-CSRFToken', '')
         expected = session.get('csrf_token', '')
-        if not supplied or not hmac.compare_digest(supplied, expected):
+        if not supplied or not supplied.isascii() or not hmac.compare_digest(supplied, expected):
             return jsonify({'success': False, 'ok': False, 'message': 'CSRF 校验失败'}), 403
+
+    if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'} and request.is_json:
+        payload = request.get_json()
+        if not isinstance(payload, dict):
+            return jsonify({'success': False, 'ok': False, 'message': 'JSON 请求体必须是对象'}), 400
 
 
 @app.after_request
@@ -440,8 +453,8 @@ def api_login():
     now = time.time()
     session['last_activity_at'] = now
     session['username'] = user['username']
-    session['role'] = user['role']
-    return jsonify({'success': True, 'message': '登录成功', 'role': user['role']})
+    session['role'] = normalize_role(user['role'])
+    return jsonify({'success': True, 'message': '登录成功', 'role': normalize_role(user['role'])})
 
 @app.route("/api/logout", methods=["POST"])
 def api_logout():
@@ -515,6 +528,7 @@ def api_users():
         # 移除密码字段
         for user in users:
             user.pop('password', None)
+            user['role'] = normalize_role(user.get('role'))
         return jsonify(users)
     
     elif request.method == "POST":

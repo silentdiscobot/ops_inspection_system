@@ -1,4 +1,4 @@
-FROM python:3.11.15-slim
+FROM python:3.11.18-slim
 
 ARG APP_UID=1000
 ARG APP_GID=1000

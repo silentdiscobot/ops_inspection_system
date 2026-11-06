@@ -57,7 +57,7 @@ def enabled():
 
 
 def role_allowed(role):
-    return (role or "") in (config.AI_ROLES or [])
+    return role == "admin" or (role or "") in (config.AI_ROLES or [])
 
 
 def require_enabled():
@@ -218,6 +218,8 @@ def read_stream(stream_id, offset, username, role):
     stream = get_stream(stream_id)
     if not stream:
         raise AiServiceError("生成任务不存在或已过期，请刷新页面重试", 404)
+    if role == "viewer" and stream.kind != "insight":
+        raise AiServiceError("当前角色只能访问巡检解读", 403)
     if stream.username != username and role != "admin":
         raise AiServiceError("无权查看该生成任务", 403)
     payload = stream.snapshot(offset)
@@ -229,6 +231,8 @@ def request_cancel(stream_id, username, role):
     stream = get_stream(stream_id)
     if not stream:
         raise AiServiceError("生成任务不存在或已结束", 404)
+    if role == "viewer" and stream.kind != "insight":
+        raise AiServiceError("当前角色只能访问巡检解读", 403)
     if stream.username != username and role != "admin":
         raise AiServiceError("无权停止该生成任务", 403)
     stream.cancel.set()
@@ -1720,7 +1724,7 @@ def build_insight_context(run_id, mask_ip=False):
 def start_insight(run_id, username, role, provider_id=None, client_ip=""):
     """对一次巡检生成 AI 解读，同样走内存流式缓冲。"""
     require_enabled()
-    if not role_allowed(role):
+    if role != 'viewer' and not role_allowed(role):
         raise AiServiceError("当前角色无权使用 AI 智能运维", 403)
     provider, api_key = _resolve_provider_or_traditional(provider_id)
     if not _is_traditional(provider):

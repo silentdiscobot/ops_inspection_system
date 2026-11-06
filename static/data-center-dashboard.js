@@ -5,6 +5,22 @@
   var rackScene = [], rackZones = [], rackHitAreas = [], rackCabinetAreas = [], rackRowDropAreas = [], dragDistance = 0;
   var rackLayout = {rows:[]}, activeZoneKey = '', rackDrag = null, selectedRackName = '', editView = false;
   var RACK_SLOT_CAPACITY = 15;
+  var projectionFitCache=null;
+  var AUTO_ORBIT_DEGREES_PER_SECOND=1;
+  var focusRow = null, focusRack = '', savedView = null;
+  function leaveFocus() {
+    focusRow=null;focusRack='';
+    if(savedView){sceneRotX=savedView.x;sceneRotY=savedView.y;scenePanX=savedView.panX;scenePanY=savedView.panY;setAutoView(savedView.auto);savedView=null;applySceneView();}
+    updateFocusTools();
+  }
+  function enterFocus(row, rack) {
+    if(!savedView)savedView={x:sceneRotX,y:sceneRotY,panX:scenePanX,panY:scenePanY,auto:autoView};
+    focusRow=row;focusRack=rack||'';setAutoView(false);if(focusRack){sceneRotX=0;sceneRotY=0;scenePanX=0;scenePanY=0;}applySceneView();updateFocusTools();
+  }
+  function updateFocusTools() {
+    var host=byId('dcFocusTools');if(!host)return;
+    host.innerHTML=savedView?'<button type="button" data-back="true">返回原视角</button>':'';
+  }
   var STATUS = {
     online: {key:'normal', label:'正常'},
     checking: {key:'warning', label:'警告'},
@@ -125,7 +141,7 @@
     });
     host.innerHTML = html;
     host.querySelectorAll('button').forEach(function(button) {
-      button.addEventListener('click', function() { selectedRoom = button.dataset.room; renderView(); });
+      button.addEventListener('click', function() { leaveFocus(); selectedRoom = button.dataset.room; renderView(); });
     });
   }
   function arrangeRack(servers) {
@@ -138,9 +154,14 @@
       return naturalCompare(a.name || a.ip, b.name || b.ip);
     }).forEach(function(server) {
       var requested = rackLocation(server.rack_number, server.rack_level).u;
-      if (requested === null || requested > RACK_SLOT_CAPACITY || used[requested]) return;
+      if (requested === null || used[requested]) return;
       used[requested] = true;
       arranged.push({server:server, u:requested, requested:requested, slot:requested});
+    });
+    servers.forEach(function(server){
+      if(arranged.some(function(item){return item.server===server;}))return;
+      var slot=1;while(used[slot])slot++;used[slot]=true;
+      arranged.push({server:server,u:slot,requested:rackLocation(server.rack_number,server.rack_level).u,slot:slot});
     });
     return arranged.sort(function(a,b) { return a.slot - b.slot; });
   }
@@ -177,7 +198,7 @@
     rackScene.forEach(function(rack){if(!zoneMap[rack.roomKey])zoneMap[rack.roomKey]={key:rack.roomKey,name:rack.room,racks:[]};zoneMap[rack.roomKey].racks.push(rack);});
     rackZones=Object.keys(zoneMap).map(function(key){var zone=zoneMap[key],names=zone.racks.map(function(rack){return rack.name;});zone.layout=loadRackLayout(names,zone.key);return zone;}).sort(function(a,b){return naturalCompare(a.name,b.name);});
     byId('dcAutoViewLabel').textContent='自动巡航';
-    byId('dcAutoView').title='自动进行360°环绕';
+    byId('dcAutoView').title='缓慢匀速360°巡航，固定中心与缩放比例';
     if(!zoneByKey(activeZoneKey))activeZoneKey=rackZones[0]?rackZones[0].key:'';
     activateZone(activeZoneKey);
     if (!selectedRackName || !rackByName(selectedRackName)) selectedRackName = rackScene[0] ? rackScene[0].id : '';
@@ -186,6 +207,7 @@
     byId('dcEmpty').hidden = servers.length !== 0;
     byId('dcRackCount').textContent = rackScene.length;
     byId('dcScrollGuide').hidden = true;
+    updateFocusTools();
   }
   function renderAlerts(servers) {
     var alerts = servers.filter(function(server) { return statusOf(server).key !== 'normal'; }).sort(function(a,b) {
@@ -275,6 +297,7 @@
     button.title=count>=8?'最多支持 8 排':(!rackLayout.rows[count-1].length?'请先在当前空排放入机柜':'在前排后新增一排');
   }
   function setEditView(enabled) {
+    if(enabled&&savedView)leaveFocus();
     editView = enabled;
     var scene = document.querySelector('.dc-perspective'), button = byId('dcEditView');
     scene.classList.toggle('edit-mode', enabled); button.classList.toggle('active', enabled); byId('dcLayoutEditor').hidden=!enabled;
@@ -322,6 +345,8 @@
   }
   function setupSceneControls() {
     var scene = document.querySelector('.dc-perspective'), rackCanvas = byId('dcRackCanvas');
+    var tools=document.createElement('div');tools.id='dcFocusTools';tools.className='dc-focus-tools';scene.appendChild(tools);
+    tools.addEventListener('click',function(event){var button=event.target.closest('button');if(!button)return;if(button.dataset.back){leaveFocus();return;}if(editView)setEditView(false);enterFocus({zone:button.dataset.zone,row:Number(button.dataset.row)},'');});
     scene.addEventListener('pointerdown', function(event) {
       if (event.target.closest('button') || event.button !== 0) return;
       var point=canvasPoint(event), cabinet=cabinetAt(point.x,point.y);
@@ -349,7 +374,7 @@
         scenePanX=Math.max(-rect.width*.42,Math.min(rect.width*.42,scenePanX+event.clientX-dragX));
         scenePanY=Math.max(-rect.height*.32,Math.min(rect.height*.32,scenePanY+event.clientY-dragY));
       } else {
-        sceneRotY = (sceneRotY + (event.clientX - dragX) * .28 + 720) % 360;
+        sceneRotY = (sceneRotY + (event.clientX - dragX) * .18 + 720) % 360;
         var minPitch=-10,maxPitch=46;
         sceneRotX = Math.max(minPitch, Math.min(maxPitch, sceneRotX - (event.clientY - dragY) * .12));
       }
@@ -365,18 +390,21 @@
       if (scene.hasPointerCapture(event.pointerId)) scene.releasePointerCapture(event.pointerId);
     }
     scene.addEventListener('pointerup', stopDrag); scene.addEventListener('pointercancel', stopDrag);
-    byId('dcAutoView').addEventListener('click', function() { if(editView) setEditView(false);setAutoView(!autoView); });
-    byId('dcResetView').addEventListener('click', function() { sceneRotX = editView ? 34 : 22; sceneRotY = editView ? -16 : -22; scenePanX = 0; scenePanY = 0; setAutoView(false); applySceneView(); });
+    byId('dcAutoView').addEventListener('click', function() { if(savedView)leaveFocus();if(editView) setEditView(false);setAutoView(!autoView); });
+    byId('dcResetView').addEventListener('click', function() { if(savedView){leaveFocus();return;}sceneRotX = editView ? 34 : 22; sceneRotY = editView ? -16 : -22; scenePanX = 0; scenePanY = 0; setAutoView(false); applySceneView(); });
     byId('dcEditView').addEventListener('click', function() { setEditView(!editView); });
     byId('dcAddRackRow').addEventListener('click', function() { var zone=zoneByKey(activeZoneKey);if(!zone||zone.layout.rows.length>=8||!zone.layout.rows[zone.layout.rows.length-1].length)return;zone.layout.rows.push([]);rackLayout=zone.layout;saveRackLayout(zone.key);updateRowEditor(); });
-    rackCanvas.addEventListener('click', function(event) {
+    scene.addEventListener('click', function(event) {
+      if(event.target.closest('button'))return;
       if (dragDistance > 6) return;
       var rect = rackCanvas.getBoundingClientRect(), x = event.clientX - rect.left, y = event.clientY - rect.top;
       for (var i = rackHitAreas.length - 1; i >= 0; i--) {
         var hit = rackHitAreas[i];
-        if (x >= hit.x && x <= hit.x + hit.w && y >= hit.y && y <= hit.y + hit.h) { showDetail(hit.server); return; }
+        var hitRack=rackScene.find(function(rack){return rack.servers.some(function(server){return server.id===hit.server.id;});});
+        var selectedRow=focusRow&&zoneByKey(focusRow.zone);
+        if (selectedRow&&hitRack&&hitRack.roomKey===focusRow.zone&&selectedRow.layout.rows[focusRow.row].indexOf(hitRack.name)!==-1 && x >= hit.x && x <= hit.x + hit.w && y >= hit.y && y <= hit.y + hit.h) { showDetail(hit.server); return; }
       }
-      var cabinet=cabinetAt(x,y); if(cabinet) updateRackInspector(cabinet.id);
+      var cabinet=cabinetAt(x,y); if(cabinet) {updateRackInspector(cabinet.id);if(!editView)enterFocus({zone:cabinet.zoneKey,row:cabinet.row},'');}
     });
     rackCanvas.addEventListener('pointermove', function(event) {
       if (dragging || rackDrag) return;
@@ -455,17 +483,28 @@
   function buildProjector(rect, halfX, halfZ, maxColumns, rowCount, maxScale, maxRackScale, sceneHeight) {
     var yaw=sceneRotY*Math.PI/180,pitch=sceneRotX*Math.PI/180,cosY=Math.cos(yaw),sinY=Math.sin(yaw),cosP=Math.cos(pitch),sinP=Math.sin(pitch);
     var cameraDistance=10+maxColumns*.35+Math.max(0,rowCount-2)*.38;
-    var fitHeight=Math.max(sceneHeight||0,1.86*(maxRackScale||1)),fitAngles=[0,45,90,135,180,225,270,315],fitWidth=0,fitVertical=0;
-    fitAngles.forEach(function(degrees){var fy=degrees*Math.PI/180,fc=Math.cos(fy),fs=Math.sin(fy),samples=[];
-      [-halfX,halfX].forEach(function(x){[-halfZ,halfZ].forEach(function(z){[0,fitHeight].forEach(function(y){var rx=x*fc-z*fs,rz=x*fs+z*fc,ry=y*cosP-rz*sinP,depth=y*sinP+rz*cosP,p=Math.max(.72,Math.min(1.32,cameraDistance/(cameraDistance-depth)));samples.push({x:rx*p,y:-ry*p});});});});
-      var xs=samples.map(function(point){return point.x;}),ys=samples.map(function(point){return point.y;});fitWidth=Math.max(fitWidth,Math.max.apply(Math,xs)-Math.min.apply(Math,xs));fitVertical=Math.max(fitVertical,Math.max.apply(Math,ys)-Math.min.apply(Math,ys));
-    });
-    var sideMargin=editView?40:18,topMargin=editView?56:22,bottomMargin=editView?52:38;
-    var scale=Math.min((rect.width-sideMargin*2)/Math.max(.1,fitWidth),(rect.height-topMargin-bottomMargin)/Math.max(.1,fitVertical),maxScale*(editView?.93:1));
-    scale=Math.max(10,scale);
-    var targetY=fitHeight*.44,targetDepth=targetY*sinP,targetPerspective=Math.max(.72,Math.min(1.32,cameraDistance/(cameraDistance-targetDepth))),targetProjectedY=-targetY*cosP*targetPerspective;
+    var fitHeight=Math.max(sceneHeight||0,1.86*(maxRackScale||1));
+    // A rotation-independent envelope keeps the scene from breathing during orbit.
+    var fitWidth=0,fitVertical=0;
+    var fitKey=[halfX,halfZ,fitHeight,sceneRotX,cameraDistance].join(':');
+    if(projectionFitCache&&projectionFitCache.key===fitKey){fitWidth=projectionFitCache.width;fitVertical=projectionFitCache.height;}else{
+    for(var angle=0;angle<360;angle+=5){
+      var radians=angle*Math.PI/180,cy=Math.cos(radians),sy=Math.sin(radians),samples=[];
+      [-halfX,halfX].forEach(function(x){[-halfZ,halfZ].forEach(function(z){[0,fitHeight].forEach(function(y){
+        var rx=x*cy-z*sy,rz=x*sy+z*cy,ry=y*cosP-rz*sinP,depth=y*sinP+rz*cosP;
+        var perspective=Math.max(.72,Math.min(1.32,cameraDistance/(cameraDistance-depth)));
+        samples.push({x:rx*perspective,y:-ry*perspective});
+      });});});
+      var bounds=projectedBounds(samples);fitWidth=Math.max(fitWidth,bounds.w);fitVertical=Math.max(fitVertical,bounds.h);
+    }
+    projectionFitCache={key:fitKey,width:fitWidth,height:fitVertical};
+    }
+    var occupancy=.8,topMargin=editView?56:34,bottomMargin=editView?52:34;
+    var availableHeight=Math.max(1,rect.height-topMargin-bottomMargin);
+    var scale=Math.min(rect.width*occupancy/Math.max(.1,fitWidth),availableHeight*occupancy/Math.max(.1,fitVertical));
+    var targetY=fitHeight*.44,targetPerspective=cameraDistance/(cameraDistance-targetY*sinP);
     var originX=rect.width/2+scenePanX;
-    var originY=rect.height*.52-targetProjectedY*scale+scenePanY;
+    var originY=topMargin+availableHeight*.56+targetY*cosP*targetPerspective*scale+scenePanY;
     function project(point) {
       var rx=point.x*cosY-point.z*sinY,rz=point.x*sinY+point.z*cosY;
       var ry=point.y*cosP-rz*sinP,depth=point.y*sinP+rz*cosP;
@@ -557,11 +596,11 @@
   }
   function drawOpenRackFloor(context,projector,zones) {
     if(!zones.length)return;
-    var project=projector.project,minX=Math.min.apply(Math,zones.map(function(zone){return zone.centerX-zone.platformHalfX;}))-.26,maxX=Math.max.apply(Math,zones.map(function(zone){return zone.centerX+zone.platformHalfX;}))+.26;
-    var halfZ=Math.max.apply(Math,zones.map(function(zone){return zone.platformHalfZ;}))+.18;
+    var project=projector.project,minX=Math.min.apply(Math,zones.map(function(zone){return zone.centerX-zone.platformHalfX;}))-.08,maxX=Math.max.apply(Math,zones.map(function(zone){return zone.centerX+zone.platformHalfX;}))+.08;
+    var halfZ=Math.max.apply(Math,zones.map(function(zone){return zone.platformHalfZ;}))+.08;
     var floor=[project({x:minX,y:-.025,z:-halfZ}),project({x:maxX,y:-.025,z:-halfZ}),project({x:maxX,y:-.025,z:halfZ}),project({x:minX,y:-.025,z:halfZ})];
     var floorGradient=context.createLinearGradient(floor[0].x,floor[0].y,floor[3].x,floor[3].y);floorGradient.addColorStop(0,'rgba(229,247,253,.62)');floorGradient.addColorStop(.52,'rgba(168,218,237,.42)');floorGradient.addColorStop(1,'rgba(100,184,217,.28)');
-    context.save();context.shadowColor='rgba(44,154,202,.18)';context.shadowBlur=18;paintPolygon(context,floor,floorGradient,'rgba(53,158,203,.48)',1.1);context.restore();
+    context.save();context.shadowColor='rgba(44,154,202,.18)';context.shadowBlur=8;paintPolygon(context,floor,floorGradient,'rgba(53,158,203,.48)',1.1);context.restore();
     context.save();context.strokeStyle='rgba(49,153,198,.17)';context.lineWidth=.75;
     for(var gx=minX;gx<=maxX+.01;gx+=.48){var ga=project({x:gx,y:-.01,z:-halfZ}),gb=project({x:gx,y:-.01,z:halfZ});context.beginPath();context.moveTo(ga.x,ga.y);context.lineTo(gb.x,gb.y);context.stroke();}
     for(var gz=-halfZ;gz<=halfZ+.01;gz+=.42){var za=project({x:minX,y:-.01,z:gz}),zb=project({x:maxX,y:-.01,z:gz});context.beginPath();context.moveTo(za.x,za.y);context.lineTo(zb.x,zb.y);context.stroke();}context.restore();
@@ -572,7 +611,7 @@
     var railLeft=project({x:minX,y:.06,z:-halfZ*.94}),railRight=project({x:maxX,y:.06,z:-halfZ*.94});context.save();context.strokeStyle='rgba(42,153,198,.48)';context.lineWidth=1.3;context.shadowColor='rgba(57,179,218,.25)';context.shadowBlur=6;context.beginPath();context.moveTo(railLeft.x,railLeft.y);context.lineTo(railRight.x,railRight.y);context.stroke();context.restore();
   }
   function drawRack3D(context, model, projector) {
-    var rack=model.rack,w=.72,h=1.78,d=.52,project=projector.project;
+    var rack=model.rack,slotCapacity=Math.max.apply(Math,[RACK_SLOT_CAPACITY].concat(model.rack.arranged.map(function(item){return item.slot;}))),w=.72,h=1.78,d=.52,project=projector.project;
     var world=[worldPoint(model,-w/2,0,-d/2),worldPoint(model,w/2,0,-d/2),worldPoint(model,w/2,h,-d/2),worldPoint(model,-w/2,h,-d/2),worldPoint(model,-w/2,0,d/2),worldPoint(model,w/2,0,d/2),worldPoint(model,w/2,h,d/2),worldPoint(model,-w/2,h,d/2)];
     var points=world.map(project),faces=[
       {key:'back',indexes:[0,1,2,3],fill:'#17465f'},{key:'left',indexes:[0,4,7,3],fill:'#1b5875'},
@@ -616,13 +655,13 @@
       var lowerFrame=[project(worldPoint(model,-w*.48,.065,frontZ+.022)),project(worldPoint(model,w*.48,.065,frontZ+.022)),project(worldPoint(model,w*.45,.17,frontZ+.022)),project(worldPoint(model,-w*.45,.17,frontZ+.022))];
       paintPolygon(context,upperFrame,pillarGradient,'#73b7ce',.75);paintPolygon(context,lowerFrame,pillarGradient,'#397c96',.75);
       context.strokeStyle='#285d73';context.lineWidth=.65;
-      for(var rail=0;rail<=RACK_SLOT_CAPACITY;rail++){var railY=.2+(h-.4)*(rail/RACK_SLOT_CAPACITY),left=project(worldPoint(model,-w*.37,railY,frontZ+.008)),right=project(worldPoint(model,w*.37,railY,frontZ+.008));context.beginPath();context.moveTo(left.x,left.y);context.lineTo(right.x,right.y);context.stroke();}
+      for(var rail=0;rail<=slotCapacity;rail++){var railY=.2+(h-.4)*(rail/slotCapacity),left=project(worldPoint(model,-w*.37,railY,frontZ+.008)),right=project(worldPoint(model,w*.37,railY,frontZ+.008));context.beginPath();context.moveTo(left.x,left.y);context.lineTo(right.x,right.y);context.stroke();}
       context.save();context.fillStyle='#91d2e6';context.font='700 5.5px Consolas';context.textAlign='center';context.textBaseline='middle';
-      for(var slotNumber=1;slotNumber<=RACK_SLOT_CAPACITY;slotNumber++){var slotRatioLabel=(slotNumber-1)/(RACK_SLOT_CAPACITY-1),slotLabel=project(worldPoint(model,-w*.405,.22+(h-.52)*slotRatioLabel+.036,frontZ+.032));context.fillText(String(slotNumber),slotLabel.x,slotLabel.y);}
+      for(var slotNumber=1;slotNumber<=slotCapacity;slotNumber++){var slotRatioLabel=(slotNumber-1)/(slotCapacity-1),slotLabel=project(worldPoint(model,-w*.405,.22+(h-.52)*slotRatioLabel+.036,frontZ+.032));context.fillText(String(slotNumber),slotLabel.x,slotLabel.y);}
       context.restore();
       rack.arranged.forEach(function(item){
-        var slotRatio=RACK_SLOT_CAPACITY===1?0:(item.slot-1)/(RACK_SLOT_CAPACITY-1);
-        var y=.22+(h-.52)*slotRatio,unitH=.072,state=statusOf(item.server),color=state.key==='normal'?'#24c996':state.key==='warning'?'#e9a52a':'#eb5967';
+        var slotRatio=slotCapacity===1?0:(item.slot-1)/(slotCapacity-1);
+        var y=.22+(h-.52)*slotRatio,unitH=Math.min(.072,(h-.52)/Math.max(1,slotCapacity-1)*.82),state=statusOf(item.server),color=state.key==='normal'?'#24c996':state.key==='warning'?'#e9a52a':'#eb5967';
         var unit=[project(worldPoint(model,-w*.36,y,frontZ+.03)),project(worldPoint(model,w*.36,y,frontZ+.03)),project(worldPoint(model,w*.36,y+unitH,frontZ+.03)),project(worldPoint(model,-w*.36,y+unitH,frontZ+.03))];
         var moduleGradient=context.createLinearGradient(unit[0].x,unit[0].y,unit[2].x,unit[2].y);moduleGradient.addColorStop(0,'#214a5d');moduleGradient.addColorStop(.38,'#0a2737');moduleGradient.addColorStop(1,'#041822');
         context.save();context.shadowColor=color;context.shadowBlur=state.key==='error'?9:6;paintPolygon(context,unit,moduleGradient,color,1.05);context.restore();
@@ -647,7 +686,7 @@
       var backGradient=context.createLinearGradient(backDoor[0].x,backDoor[0].y,backDoor[2].x,backDoor[2].y);backGradient.addColorStop(0,'#153c4e');backGradient.addColorStop(.48,'#041824');backGradient.addColorStop(1,'#102f40');
       paintPolygon(context,backDoor,backGradient,'#5498b2',1);
       rack.arranged.forEach(function(item){
-        var slotRatio=(item.slot-1)/(RACK_SLOT_CAPACITY-1),y=.22+(h-.52)*slotRatio,unitH=.072,state=statusOf(item.server),color=state.key==='normal'?'#24c996':state.key==='warning'?'#e9a52a':'#eb5967';
+        var slotRatio=(item.slot-1)/(slotCapacity-1),y=.22+(h-.52)*slotRatio,unitH=Math.min(.072,(h-.52)/Math.max(1,slotCapacity-1)*.82),state=statusOf(item.server),color=state.key==='normal'?'#24c996':state.key==='warning'?'#e9a52a':'#eb5967';
         var rearUnit=[project(worldPoint(model,-w*.36,y,backZ-.018)),project(worldPoint(model,w*.36,y,backZ-.018)),project(worldPoint(model,w*.36,y+unitH,backZ-.018)),project(worldPoint(model,-w*.36,y+unitH,backZ-.018))];
         var rearGradient=context.createLinearGradient(rearUnit[0].x,rearUnit[0].y,rearUnit[2].x,rearUnit[2].y);rearGradient.addColorStop(0,'#173a4a');rearGradient.addColorStop(.5,'#071e2a');rearGradient.addColorStop(1,'#102f3e');
         context.save();context.shadowColor=color;context.shadowBlur=4;paintPolygon(context,rearUnit,rearGradient,color,.85);context.restore();
@@ -667,7 +706,7 @@
       for(var sideGroove=1;sideGroove<9;sideGroove++){var grooveY=.18+(h-.36)*(sideGroove/9),grooveA=project(worldPoint(model,sideX+sideSign*.004,grooveY,-d*.35)),grooveB=project(worldPoint(model,sideX+sideSign*.004,grooveY,d*.35));context.beginPath();context.moveTo(grooveA.x,grooveA.y);context.lineTo(grooveB.x,grooveB.y);context.stroke();}
       context.restore();
       rack.arranged.forEach(function(item){
-        var slotRatio=(item.slot-1)/(RACK_SLOT_CAPACITY-1),y=.22+(h-.52)*slotRatio,unitH=.072,state=statusOf(item.server),color=state.key==='normal'?'#24c996':state.key==='warning'?'#e9a52a':'#eb5967';
+        var slotRatio=(item.slot-1)/(slotCapacity-1),y=.22+(h-.52)*slotRatio,unitH=Math.min(.072,(h-.52)/Math.max(1,slotCapacity-1)*.82),state=statusOf(item.server),color=state.key==='normal'?'#24c996':state.key==='warning'?'#e9a52a':'#eb5967';
         var sideUnit=[project(worldPoint(model,sideX+sideSign*.012,y,-d*.3)),project(worldPoint(model,sideX+sideSign*.012,y,d*.36)),project(worldPoint(model,sideX+sideSign*.012,y+unitH,d*.36)),project(worldPoint(model,sideX+sideSign*.012,y+unitH,-d*.3))];
         var sideUnitGradient=context.createLinearGradient(sideUnit[0].x,sideUnit[0].y,sideUnit[2].x,sideUnit[2].y);sideUnitGradient.addColorStop(0,'#173b4b');sideUnitGradient.addColorStop(.5,'#061b26');sideUnitGradient.addColorStop(1,'#123543');
         context.save();context.shadowColor=color;context.shadowBlur=4;paintPolygon(context,sideUnit,sideUnitGradient,color,.8);context.restore();
@@ -685,7 +724,7 @@
     context.save();context.fillStyle='rgba(255,255,255,.95)';roundedRect(context,baseLabel.x-labelWidth/2,baseLabel.y+8,labelWidth,labelHeight,Math.min(6,labelHeight/3));context.fill();context.strokeStyle=selected?'rgba(39,167,220,.68)':'rgba(57,151,200,.22)';context.lineWidth=selected?1.5:1;context.stroke();
     var maxRackChars=Math.max(3,Math.floor((labelWidth-(compactLabel?8:24))/6.2)),rackText=String(rack.name),shortRack=rackText.length>maxRackChars?rackText.slice(0,Math.max(2,maxRackChars-1))+'…':rackText;
     context.fillStyle='#124968';context.font='800 '+(compactLabel?9:10)+'px Consolas';context.textAlign='center';context.textBaseline='middle';context.fillText(compactLabel?positionCode:positionCode+' · '+shortRack,baseLabel.x,baseLabel.y+16);
-    var hiddenCount=Math.max(0,rack.servers.length-rack.arranged.length),deviceText='容量 '+rack.arranged.length+'/'+RACK_SLOT_CAPACITY+(hiddenCount?' · 未展示 '+hiddenCount:'');
+    var hiddenCount=Math.max(0,rack.servers.length-rack.arranged.length),deviceText='容量 '+rack.arranged.length+'/'+slotCapacity+(hiddenCount?' · 未展示 '+hiddenCount:'');
     context.fillStyle='#416f89';context.font='700 '+(compactLabel?6:7)+'px "Microsoft YaHei","Segoe UI"';context.fillText(compactLabel?shortRack:deviceText,baseLabel.x,baseLabel.y+(compactLabel?27:30));context.restore();
     var bounds=projectedBounds(points.concat([{x:baseLabel.x-labelWidth/2,y:baseLabel.y+8},{x:baseLabel.x+labelWidth/2,y:baseLabel.y+8+labelHeight}]));bounds.id=rack.id;bounds.name=rack.name;bounds.zoneKey=rack.roomKey;bounds.row=model.row;bounds.index=model.index;bounds.anchorX=baseLabel.x;bounds.anchorY=baseLabel.y;rackCabinetAreas.push(bounds);
   }
@@ -704,17 +743,45 @@
     });
     totalWidth+=gap*Math.max(0,sceneZones.length-1);
     var cursor=-totalWidth/2,sceneHalfZ=.5;
-    sceneZones.forEach(function(zone){zone.centerX=cursor+zone.width/2;cursor+=zone.width+gap;zone.rowSpacing=Math.min(1.7,5/Math.max(1,zone.rowCount-1));zone.floorHalfZ=Math.max(1.25,Math.min(4.1,(zone.rowCount-1)*zone.rowSpacing/2+.85));zone.platformHalfX=zone.halfX*1.16;zone.platformHalfZ=zone.floorHalfZ*1.14;zone.roomHeight=Math.max(2.35,1.78*zone.profile.rackScale+.34);var rackHalfZ=(zone.rowCount-1)*zone.rowSpacing/2+.36;sceneHalfZ=Math.max(sceneHalfZ,Math.min(zone.platformHalfZ,rackHalfZ+.72));});
-    var maxRackScale=Math.max.apply(Math,sceneZones.map(function(zone){return zone.profile.rackScale;})),sceneHeight=1.86*maxRackScale,projector=buildProjector(rect,totalWidth/2+.72,sceneHalfZ,maxColumns,maxRows,globalProfile.maxScale,maxRackScale,sceneHeight),models=[];
+    sceneZones.forEach(function(zone){zone.centerX=cursor+zone.width/2;cursor+=zone.width+gap;zone.rowSpacing=Math.min(1.7,5/Math.max(1,zone.rowCount-1));zone.floorHalfZ=Math.max(1.25,Math.min(4.1,(zone.rowCount-1)*zone.rowSpacing/2+.85));zone.platformHalfX=(zone.columns-1)*zone.profile.spacingX/2+.52*zone.profile.rackScale;zone.platformHalfZ=(zone.rowCount-1)*zone.rowSpacing/2+.48*zone.profile.rackScale;zone.roomHeight=Math.max(2.35,1.78*zone.profile.rackScale+.34);var rackHalfZ=(zone.rowCount-1)*zone.rowSpacing/2+.36;sceneHalfZ=Math.max(sceneHalfZ,Math.min(zone.platformHalfZ,rackHalfZ+.72));});
+    var maxRackScale=Math.max.apply(Math,sceneZones.map(function(zone){return zone.profile.rackScale;})),sceneHeight=1.86*maxRackScale,projector=buildProjector(rect,Math.max.apply(Math,sceneZones.map(function(zone){return Math.abs(zone.centerX)+(zone.columns-1)*zone.profile.spacingX/2+.4*zone.profile.rackScale;})),sceneHalfZ,maxColumns,maxRows,globalProfile.maxScale,maxRackScale,sceneHeight),models=[];
     sceneZones.forEach(function(zone){
       zone.rows.forEach(function(racks,rowIndex){var rowZ=((zone.rowCount-1)/2-rowIndex)*zone.rowSpacing;zone.rowZs.push(rowZ);racks.forEach(function(rack,index){models.push({rack:rack,zone:zone,row:rowIndex,index:index,rackScale:zone.profile.rackScale,x:zone.centerX+(index-(racks.length-1)/2)*zone.profile.spacingX,z:rowZ});});});
       var zoneCorners=[projector.project({x:zone.centerX-zone.platformHalfX,y:0,z:-zone.platformHalfZ}),projector.project({x:zone.centerX+zone.platformHalfX,y:0,z:-zone.platformHalfZ}),projector.project({x:zone.centerX+zone.platformHalfX,y:0,z:zone.platformHalfZ}),projector.project({x:zone.centerX-zone.platformHalfX,y:0,z:zone.platformHalfZ})];
       var zoneBounds=projectedBounds(zoneCorners);zone.left=Math.max(8,zoneBounds.x);zone.right=Math.min(rect.width-8,zoneBounds.x+zoneBounds.w);
       zone.rowZs.forEach(function(rowZ,rowIndex){var anchor=projector.project({x:zone.centerX,y:0,z:rowZ});rackRowDropAreas.push({zoneKey:zone.key,roomName:zone.name,row:rowIndex,x:anchor.x,y:anchor.y,left:zone.left,right:zone.right});});
     });
+    context.save();
+    context.beginPath();context.rect(16,16,Math.max(0,rect.width-32),Math.max(0,rect.height-32));context.clip();
     drawOpenRackFloor(context,projector,sceneZones);
+    context.restore();
+    if(focusRack){
+      var focused=models.filter(function(model){return focusRack?model.rack.id===focusRack:model.zone.key===focusRow.zone&&model.row===focusRow.row;});
+      var focusScale=Math.min((rect.width-64)/Math.max(1,focused.length*1.05),(rect.height-110)/1.95,focusRack?260:190);
+      projector={project:function(point){return {x:rect.width/2+point.x*focusScale+scenePanX,y:rect.height-50-point.y*focusScale+scenePanY,z:point.z,p:1};},yaw:0,pitch:0,scale:focusScale};
+      focused.forEach(function(model,index){model.x=(index-(focused.length-1)/2)*1.05;model.z=0;model.rackScale=1;});
+      models.forEach(function(model){model.focused=focused.indexOf(model)!==-1;});
+    }
     models.forEach(function(model){model.depth=projector.project({x:model.x,y:1.4,z:model.z}).z;});models.sort(function(a,b){return a.depth-b.depth;});
-    models.forEach(function(model){if(!rackDrag||model.rack.id!==rackDrag.id)drawRack3D(context,model,projector);});
+    var selectedModel=models.find(function(model){return model.rack.id===selectedRackName;});
+    models.forEach(function(model){
+      model.occluding=false;
+      if(focusRow||editView||!selectedModel||model===selectedModel||model.depth<=selectedModel.depth)return;
+      var target=projector.project(worldPoint(selectedModel,0,.9,0)),center=projector.project(worldPoint(model,0,.9,0));
+      model.occluding=Math.abs(center.x-target.x)<projector.scale*.78&&Math.abs(center.y-target.y)<projector.scale*1.5;
+    });
+    var rowTargets=focusRow?models.filter(function(model){return model.zone.key===focusRow.zone&&model.row===focusRow.row;}):[];
+    models.forEach(function(model){
+      if(rackDrag&&model.rack.id===rackDrag.id)return;
+      // Hide only cabinets in front of and overlapping the selected row.
+      var blocked=focusRow&&!focusRack&&rowTargets.indexOf(model)===-1&&rowTargets.some(function(target){
+        if(model.depth<=target.depth)return false;
+        var a=projector.project(worldPoint(model,0,.9,0)),b=projector.project(worldPoint(target,0,.9,0));
+        return Math.abs(a.x-b.x)<projector.scale*.9&&Math.abs(a.y-b.y)<projector.scale*1.8;
+      });
+      if(blocked)return;
+      context.save();drawRack3D(context,model,projector);context.restore();
+    });
     if(editView){
       sceneZones.forEach(function(zone){var visualRows=rackRowDropAreas.filter(function(area){return area.zoneKey===zone.key;}).sort(function(a,b){return a.y-b.y;});
         visualRows.forEach(function(area,lane){var previous=lane?visualRows[lane-1].y:area.y-(visualRows[1]?visualRows[1].y-area.y:72),next=visualRows[lane+1]?visualRows[lane+1].y:area.y+(lane?visualRows[lane].y-visualRows[lane-1].y:72),laneTop=Math.max(38,(previous+area.y)/2),laneBottom=Math.min(rect.height-12,(area.y+next)/2),active=rackDrag&&rackDrag.zoneKey===area.zoneKey&&rackDrag.targetRow===area.row;context.save();context.setLineDash([6,5]);context.strokeStyle=active?'rgba(25,140,191,.82)':'rgba(55,145,190,.25)';context.lineWidth=active?1.8:1;context.fillStyle=active?'rgba(83,192,232,.13)':'rgba(255,255,255,.025)';context.fillRect(area.left,laneTop,Math.max(36,area.right-area.left),Math.max(28,laneBottom-laneTop));context.strokeRect(area.left,laneTop,Math.max(36,area.right-area.left),Math.max(28,laneBottom-laneTop));context.setLineDash([]);context.fillStyle=active?'#126f99':'#4f839e';context.font='800 8px "Microsoft YaHei"';context.textAlign='left';context.textBaseline='top';context.fillText(area.roomName+' · '+rowCode(area.row)+'排',area.left+7,laneTop+7);context.restore();});
@@ -736,7 +803,7 @@
       context.fillStyle = 'rgba(65,211,255,' + (.1 + (i % 5) * .035) + ')'; context.beginPath(); context.arc(x,y,.6 + (i%3)*.45,0,Math.PI*2); context.fill();
       if (i % 4 === 0) { context.strokeStyle='rgba(43,154,221,.055)'; context.beginPath(); context.moveTo(x,y); context.lineTo((x+110)%rect.width,(y+52)%rect.height); context.stroke(); }
     }
-    if (autoView && !dragging && !rackDrag) { sceneRotY = (sceneRotY + delta * 2 + 360) % 360; applySceneView(); }
+    if (autoView && !dragging && !rackDrag) { sceneRotY=(sceneRotY+delta*AUTO_ORBIT_DEGREES_PER_SECOND+360)%360;applySceneView(); }
     drawRackScene();
     sceneFrame = requestAnimationFrame(drawScene);
   }
@@ -745,7 +812,7 @@
   byId('dcRefreshBtn').addEventListener('click', fetchStatus);
   byId('dcFullscreenBtn').addEventListener('click', toggleFullscreen);
   document.addEventListener('fullscreenchange', syncFullscreen);
-  document.addEventListener('keydown', function(event) { if (event.key === 'Escape') byId('dcServerPopover').hidden = true; });
+  document.addEventListener('keydown', function(event) { if (event.key === 'Escape') {if(!byId('dcServerPopover').hidden)byId('dcServerPopover').hidden=true;else if(savedView)leaveFocus();} });
   document.addEventListener('lingtu:before-unmount', function cleanup() {
     disposed = true; clearInterval(clockTimer); clearInterval(statusTimer); if (sceneFrame) cancelAnimationFrame(sceneFrame); document.removeEventListener('fullscreenchange', syncFullscreen);
   }, {once:true});

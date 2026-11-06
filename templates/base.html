@@ -16,11 +16,12 @@
     </div>
     
     <div class="sidebar-menu">
-      {% if current_user.role in ['admin', 'operator'] %}
+      {% if can_access('/') %}
       <a href="/" class="menu-item">
         <span class="menu-icon">🏠</span>
         <span class="menu-text">首页</span>
       </a>
+      {% if can_access('/dashboard') %}
       <div class="menu-dropdown dashboard-menu-dropdown{% if request.path.startswith('/dashboard') %} expanded{% endif %}">
         <a href="#" class="menu-item menu-dropdown-toggle system-menu-item dashboard-menu-item" onclick="toggleDropdown(this, event); return false;">
           <span class="menu-icon">◈</span>
@@ -32,6 +33,8 @@
           <a href="/dashboard/data-center" class="menu-item sub-menu-item{% if request.path == '/dashboard/data-center' %} active{% endif %}"><span class="menu-text">机房机柜视图</span></a>
         </div>
       </div>
+      {% endif %}
+      {% if can_access('/servers') %}
       <div class="menu-dropdown resource-overview-menu-dropdown">
         <a href="#" class="menu-item menu-dropdown-toggle system-menu-item" onclick="toggleDropdown(this, event); return false;">
           <span class="menu-icon">📋</span>
@@ -43,10 +46,14 @@
           <a href="/services" class="menu-item sub-menu-item"><span class="menu-text">服务信息表</span></a>
         </div>
       </div>
+      {% endif %}
+      {% if can_access('/server_inspect') %}
       <a href="/server_inspect" class="menu-item">
         <span class="menu-icon">🛠️</span>
         <span class="menu-text">服务器巡检</span>
       </a>
+      {% endif %}
+      {% if can_access('/ai/chat') %}
       <div class="menu-dropdown ai-menu-dropdown{% if request.path.startswith('/ai') %} expanded{% endif %}">
         <a href="#" class="menu-item menu-dropdown-toggle system-menu-item" onclick="toggleDropdown(this, event); return false;">
           <span class="menu-icon"><img src="/static/images/logo-robot.png" alt="" class="ai-logo-icon" aria-hidden="true"></span>
@@ -63,6 +70,8 @@
           {% endif %}
         </div>
       </div>
+      {% endif %}
+      {% if can_access('/servers-new') %}
       <div class="menu-dropdown resource-management-menu-dropdown">
         <a href="#" class="menu-item menu-dropdown-toggle system-menu-item" onclick="toggleDropdown(this, event); return false;">
           <span class="menu-icon">🗂️</span>
@@ -76,6 +85,8 @@
           <a href="/services-new" class="menu-item sub-menu-item"><span class="menu-text">新增服务表</span></a>
         </div>
       </div>
+      {% endif %}
+      {% if can_access('/resource-changes') %}
       <div class="menu-dropdown operations-change-menu-dropdown">
         <a href="#" class="menu-item menu-dropdown-toggle system-menu-item" onclick="toggleDropdown(this, event); return false;">
           <span class="menu-icon">🔄</span>
@@ -88,12 +99,18 @@
         </div>
       </div>
       {% endif %}
+      {% endif %}
       
+      {% if can_access('/reports') %}
       <a href="/reports" class="menu-item">
         <span class="menu-icon">📊</span>
         <span class="menu-text">历史报告单</span>
       </a>
       
+      {% endif %}
+      {% if current_user.role == 'viewer' %}
+      <a href="/ai/insights" class="menu-item"><span class="menu-text">AI巡检解读</span></a>
+      {% endif %}
       {% if current_user.role == 'admin' %}
       <div class="menu-dropdown system-management-menu-dropdown{% if request.path in ['/users', '/audit-logs'] %} expanded{% endif %}">
         <a href="#" class="menu-item menu-dropdown-toggle system-menu-item" onclick="toggleDropdown(this, event); return false;">

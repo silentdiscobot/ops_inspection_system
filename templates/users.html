@@ -63,8 +63,9 @@
         <div class="form-group">
           <label>权限角色 <span class="required">*</span></label>
           <select id="new-role" class="form-select" required>
-            <option value="admin">超级管理员</option>
-            <option value="operator">系统操作员</option>
+            <option value="admin">系统管理员</option>
+            <option value="dashboard_viewer">大屏查看员</option>
+            <option value="asset_manager">资产管理员</option>
             <option value="viewer">报告查看员</option>
           </select>
         </div>
@@ -108,8 +109,9 @@
         <div class="form-group">
           <label>权限角色 <span class="required">*</span></label>
           <select id="edit-role" class="form-select" required>
-            <option value="admin">超级管理员</option>
-            <option value="operator">系统操作员</option>
+            <option value="admin">系统管理员</option>
+            <option value="dashboard_viewer">大屏查看员</option>
+            <option value="asset_manager">资产管理员</option>
             <option value="viewer">报告查看员</option>
           </select>
         </div>
@@ -136,10 +138,12 @@ function loadUsers() {
       }
       
       for (var i = 0; i < data.length; i++) {
-        var user = data[i];
+        let user = data[i];
         var roleMap = {
-          'admin': '超级管理员',
-          'operator': '系统操作员',
+          'admin': '系统管理员',
+          'operator': '资产管理员',
+          'dashboard_viewer': '大屏查看员',
+          'asset_manager': '资产管理员',
           'viewer': '报告查看员'
         };
         var roleText = roleMap[user.role] || user.role;
@@ -148,20 +152,39 @@ function loadUsers() {
         var statusClass = user.is_default ? 'status-default' : 'status-normal';
         
         var row = document.createElement('tr');
-        var deleteBtn = user.is_default ? ' <span class="disabled">无法删除</span>' : '<button class="btn btn-danger btn-sm" onclick="deleteUser(' + user.id + ', \'' + user.username + '\')">删除</button>';
-        row.innerHTML = '<tr>' +
-          '<td>' + user.id + '</td>' +
-          '<td>' + user.username + '</td>' +
-          '<td>' + (user.display_name || '-') + '</td>' +
-          '<td>' + (user.contact || '-') + '</td>' +
-          '<td><span class="role-badge ' + user.role + '">' + roleText + '</span></td>' +
-          '<td>' + user.created_at + '</td>' +
-          '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>' +
-          '<td>' +
-          '<button class="btn btn-primary btn-sm" onclick="showEditUserModal(' + user.id + ', \'' + user.username + '\', \'' + (user.display_name || '') + '\', \'' + (user.contact || '') + '\', \'' + user.role + '\')">编辑</button>' +
-          deleteBtn +
-          '</td>' +
-          '</tr>';
+        function cell(value) {
+          var td = document.createElement('td');
+          td.textContent = value == null ? '' : String(value);
+          row.appendChild(td);
+          return td;
+        }
+        cell(user.id);
+        cell(user.username);
+        cell(user.display_name || '-');
+        cell(user.contact || '-');
+        cell(roleText);
+        cell(user.created_at);
+        cell(statusText);
+        var actions = cell('');
+        var edit = document.createElement('button');
+        edit.className = 'btn btn-primary btn-sm';
+        edit.textContent = '编辑';
+        edit.addEventListener('click', function() {
+          showEditUserModal(user.id, user.username, user.display_name || '', user.contact || '', user.role);
+        });
+        actions.appendChild(edit);
+        if (user.is_default) {
+          var disabled = document.createElement('span');
+          disabled.className = 'disabled';
+          disabled.textContent = ' 无法删除';
+          actions.appendChild(disabled);
+        } else {
+          var remove = document.createElement('button');
+          remove.className = 'btn btn-danger btn-sm';
+          remove.textContent = '删除';
+          remove.addEventListener('click', function() { deleteUser(user.id, user.username); });
+          actions.appendChild(remove);
+        }
         tbody.appendChild(row);
       }
     })
